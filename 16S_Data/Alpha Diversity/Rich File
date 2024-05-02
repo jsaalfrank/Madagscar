@@ -1,0 +1,8 @@
+rich <-
+  ps %>% 
+  rarefy_even_depth() %>% # let's rarefy the data to make sure that sequencing depth is similar for all samples
+  estimate_richness(measures = "Shannon") %>% # get alpha diversity
+  rownames_to_column("NGS_ID") %>% #format
+  left_join(sample_data(ps) %>% data.frame() , by = "NGS_ID") # here I am combining the output of estimate richness with the sample data of the phyloseq object. I need to transform it to data.frame first
+
+rich %>% head()
