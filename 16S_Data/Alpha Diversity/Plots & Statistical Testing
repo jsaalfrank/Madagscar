@@ -1,0 +1,20 @@
+## you can enter whatever x value you want 
+
+ggplot(rich, aes(x = c_b07_ethnicgroup_c, y = Shannon)) +
+  geom_violin(aes(group = c_b07_ethnicgroup_c)) +
+  geom_jitter(aes(color = factor(c_b07_ethnicgroup_c)))+
+  geom_boxplot(aes(group = c_b07_ethnicgroup_c), width = 0.5, color = "black") +
+  labs(x = "Ethnic group", y = "Shannon")+
+  theme_minimal()
+
+rich %>% 
+  arrange(c_b01_csbnom_s) %>% 
+  wilcox.test(Shannon ~ c_b01_csbnom_s, data = .)
+
+#take subset of the rich data
+
+PZQ_shannon <- rich[ rich[, "c_c01_praziever_c"] %in% c("oui", "non") , ]
+
+# Wilcoxon test, where Shannon index is the variable that we are comparing. 
+# Cohort - 2 or 3 - is the factor that we use for grouping. 
+PZQ_shannon  <- wilcox.test(Shannon ~ c_c01_praziever_c, data = PZQ_shannon )
