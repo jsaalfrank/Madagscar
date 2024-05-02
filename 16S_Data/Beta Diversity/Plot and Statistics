@@ -1,0 +1,27 @@
+ps.ord <- ps %>% 
+  rarefy_even_depth() %>% # let's rarefy the data to make sure that sequencing depth is similar for all samples
+  ordinate("NMDS", "bray")
+p1 = plot_ordination(ps, ps.ord, type="NGS_ID", color="c_b01_csbnom_s")+
+  coord_cartesian(xlim = c(-1, 1), ylim = c(-1, 1))
+print(p1)
+
+custom_colors_pcr_haematobium <- c("0" = "coral", "1" = "red")
+
+ps <- sample_data(ps)  # Get the sample data frame from the phyloseq object
+ps$pcr_haematobium <- factor(ps$pcr_haematobium)
+
+
+p2 =plot_ordination(ps, ps.ord, type = "samples", color = "c_d03_tdrschistoresult_d") + 
+  stat_ellipse(mapping= aes(fill = c_d03_tdrschistoresult_d),geom = "polygon", alpha = 0.1, show.legend = FALSE) +
+  #scale_shape_manual(values=c(1,0)) +
+  coord_cartesian(xlim = c(-1, 1), ylim = c(-1, 1))+
+  #scale_color_manual(values = custom_colors_pcr_haematobium ) +
+  #scale_fill_manual(values = custom_colors_pcr_haematobium ) +
+  theme_bw() 
+  
+  print(p2)
+  
+ps <-
+    phyloseq(tax_table(tax.ps),  
+    otu_table(micro.ps, taxa_are_rows = F),
+    sample_data(samples.ps))
