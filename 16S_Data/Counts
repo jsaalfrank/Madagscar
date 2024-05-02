@@ -1,0 +1,17 @@
+## How much did we sequence of each sample?
+
+counts <-
+  ps %>% 
+  otu_table() %>%
+  data.frame() %>% 
+  rowSums()
+counts
+
+to.plot <-
+  counts %>% 
+  data.frame(counts = ., Sample = names(.))
+
+ggplot(to.plot, aes(x = Sample, y = counts)) +
+  geom_col() +
+  geom_hline(yintercept = 10000) + # add horizontal line 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) # flip the axis names
