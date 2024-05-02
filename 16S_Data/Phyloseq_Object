@@ -1,0 +1,98 @@
+path <- "~/Desktop/16S_Stool 2"
+path_taxonomy <- "~/Desktop/16S_Stool 2/tax_assign"
+path_table <- "~/Desktop/16S_Stool 2/tables"
+setwd(path)
+##samples infromation & metadata
+samples <- read_excel("SCHISDIMA_Metadata_NGS-ID.xlsx")
+row.names(samples) <- samples$NGS_ID
+samples <- samples[, -c(3)]
+ordered_samples <- samples[order(rownames(samples)),]
+
+##microbiome information
+micro <- readRDS(paste0("seqtab_nochim.Rds"))
+
+##tax infromation
+setwd(path_taxonomy)
+tax <- read.delim(paste0("taxa_Bayesian_RDP16_SV.tsv"),sep = " ")
+setwd(path)
+
+setwd(path_table)
+taxonomy <- read.delim(paste0("Table_ASV_Bayesian_RDP16.tsv"), sep = "\t") 
+setwd(path)
+
+## order the tables, so that NGS ID will fit to each another
+
+ordered_micro <- micro[order(rownames(micro)),]
+ordered_taxonomy <- taxonomy[order(rownames(taxonomy)),]
+
+##put the NTCs and the  Mock communities in an extra table
+
+ID_NTC_Mock <- NTC_Mock_IDS$ID
+rows_to_remove <- ID_NTC_Mock
+ordered_micro <- ordered_micro[!(rownames(ordered_micro) %in% rows_to_remove), ]
+ordered_samples <- ordered_samples[!(rownames(ordered_samples) %in% rows_to_remove), ]
+ordered_taxonomy <- ordered_taxonomy[!(rownames(ordered_taxonomy) %in% rows_to_remove), ]
+
+##remove the samples, where no PCR was performed: 
+
+NO_PCR_Performed <- No_PCR_Performed$no_PCR
+rows_to_remove <- NO_PCR_Performed
+ordered_micro <- ordered_micro[!(rownames(ordered_micro) %in% rows_to_remove), ]
+ordered_samples <- ordered_samples[!(rownames(ordered_samples) %in% rows_to_remove), ]
+ordered_taxonomy <- ordered_taxonomy[!(rownames(ordered_taxonomy) %in% rows_to_remove), ]
+
+
+## check if the rownames of the different phyoseq-components would be the same
+
+identical(tax %>% rownames(), ordered_micro %>% colnames())
+
+identical(ordered_micro %>% rownames(), ordered_samples$NGS_ID)
+
+##iif this is not true, remove unidentical rownames 
+
+rownames_micro <- ordered_micro %>% rownames()
+rownames_samples <- ordered_samples$NGS_ID
+
+unique_to_rownames_micro <- setdiff(rownames_micro , rownames_samples)
+unique_to_rownames_samples <- setdiff(rownames_samples, rownames_micro)
+
+##just in the micro_samples are 20 rows, that are not defined in the Metadata. Time to remove them. 
+
+rows_to_remove <- unique_to_rownames_micro 
+ordered_micro <- ordered_micro[!(rownames(ordered_micro) %in% rows_to_remove), ]
+
+##check again, if now we have the same data: 
+identical(ordered_micro %>% rownames(), ordered_samples$NGS_ID)
+
+###also remove these date from the taxonomy table
+rownames_taxonomy <- ordered_taxonomy %>% rownames()
+
+unique_to_rownames_micro <- setdiff(rownames_micro  , rownames_taxonomy )
+unique_to_rownames_taxonomy <- setdiff(rownames_taxonomy, rownames_micro )
+rows_to_remove <- unique_to_rownames_taxonomy
+ordered_taxonomy <- ordered_taxonomy[!(rownames(ordered_taxonomy) %in% rows_to_remove), ]
+
+
+
+##if this is true, lets create a phyloseq object! 
+tax.ps <-
+  tax_table(tax %>% as.matrix())
+
+micro.ps <-
+  otu_table(ordered_micro, taxa_are_rows = F)
+
+rownames(ordered_samples) <-
+  ordered_samples %>% pull(NGS_ID)
+
+samples.ps <-
+  sample_data(ordered_samples %>% data.frame())
+
+rownames(samples.ps) <-
+  samples.ps %>% pull(NGS_ID)
+
+ps <-
+  phyloseq(tax_table(tax.ps),  
+           otu_table(micro.ps, taxa_are_rows = F),
+           sample_data(samples.ps))
+
+ps
