@@ -10,9 +10,10 @@ custom_colors_pcr_haematobium <- c("0" = "coral", "1" = "red")
 ps <- sample_data(ps)  # Get the sample data frame from the phyloseq object
 ps$pcr_haematobium <- factor(ps$pcr_haematobium)
 
+x = c_b04_sex_d ##here any kind of variable can be put in. 
 
-p2 =plot_ordination(ps, ps.ord, type = "samples", color = "c_d03_tdrschistoresult_d") + 
-  stat_ellipse(mapping= aes(fill = c_d03_tdrschistoresult_d),geom = "polygon", alpha = 0.1, show.legend = FALSE) +
+p2 =plot_ordination(ps, ps.ord, type = "samples", color = "x") + 
+  stat_ellipse(mapping= aes(fill = x),geom = "polygon", alpha = 0.1, show.legend = FALSE) +
   #scale_shape_manual(values=c(1,0)) +
   coord_cartesian(xlim = c(-1, 1), ylim = c(-1, 1))+
   #scale_color_manual(values = custom_colors_pcr_haematobium ) +
@@ -25,3 +26,17 @@ ps <-
     phyloseq(tax_table(tax.ps),  
     otu_table(micro.ps, taxa_are_rows = F),
     sample_data(samples.ps))
+
+
+##test the significance
+
+micro.dis <-
+  ps %>% 
+  rarefy_even_depth() %>% # let's rarefy the data to make sure that sequencing depth is similar for all samples
+  phyloseq::distance("bray")
+
+
+x= c_b04_sex_d ##here any kind of variable can be put in. 
+
+
+adonis2(micro.dis ~ c_b04_sex_d, data = ps %>% sample_data() %>% data.frame())
