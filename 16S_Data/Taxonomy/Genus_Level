@@ -1,0 +1,87 @@
+GP = rarefy_even_depth(ps)# make all samples with the same sequencing depth using rarefaction
+genus.sum = tapply(taxa_sums(GP), tax_table(GP)[, "Genus"], sum, na.rm=TRUE)
+top20genus = names(sort(genus.sum, TRUE))[1:20]
+GP_mostgenus = prune_taxa((tax_table(GP)[, "Genus"] %in% top20genus), GP)
+
+subset_p1 <- subset_samples(GP_mostgenus, pcr_mansoni %in% c("0", "1"))
+
+sample_data(subset_p1)$pcr_mansoni[sample_data(subset_p1)$pcr_mansoni == "0"] <- "negative"
+sample_data(subset_p1)$pcr_mansoni[sample_data(subset_p1)$pcr_mansoni == "1"] <- "positive"
+ps.rel = transform_sample_counts(subset_p1, function(x) x/sum(x)*100)
+# agglomerate taxa
+glom <- tax_glom(ps.rel, taxrank = 'Genus', NArm = FALSE)
+ps.melt <- psmelt(glom)
+# change to character for easy-adjusted level
+ps.melt$Genus <- as.character(ps.melt$Genus)
+
+ps.melt <- ps.melt %>%
+  group_by(pcr_mansoni, Genus) %>%
+  mutate(median=median(Abundance))
+
+ps.melt_sum <- ps.melt %>%
+  group_by(pcr_mansoni,Genus) %>%
+  summarise(Abundance=sum(Abundance))
+
+ggplot(ps.melt_sum, aes(x = pcr_mansoni, y = Abundance, fill = Genus)) + 
+  geom_bar(stat = "identity", aes(fill=Genus), position = "fill" ) + 
+  labs(x="pcr_mansoni", y="Relative Abundance%") +
+  facet_wrap(~pcr_mansoni, scales= "free_x", nrow=1) +
+  ggtitle("Taxonomy_GenusLevel") +
+  theme_classic() + 
+  theme(strip.background = element_blank(), 
+        axis.text.x.bottom = element_text(angle = -90))
+
+####Test for significance
+
+GP = rarefy_even_depth(ps)
+subset_p1 <- subset_samples(GP_mostgenus , pcr_mansoni %in% c("0", "1"))
+ps.to.dseq <-
+  subset_p1 %>%
+  aggregate_taxa(level = "Genus")
+
+
+#Now, let us do the DESeq2 routine
+
+# Create DESeq2 object from 
+dseq <-
+  ps.to.dseq %>% 
+  phyloseq_to_deseq2(design = ~ pcr_mansoni) 
+
+#add a pseudo-count value of '1' to your data
+#use: 
+estimateSizeFactors(dseq, type = 'poscounts')
+dseq <- estimateSizeFactors(dseq, type = 'poscounts')
+
+# Perform test. There is a lot going under the hood here, including: estimation of size factors, estimation of dispersion, and Negative Binomial GLM fitting and Wald statistics.
+res <-
+  DESeq(dseq)
+res %>% colData %>% head()
+
+# Extract the result table
+res.df <-
+  res %>% 
+  results(tidy = T)
+#Visualize what we got out of it
+res.df %>% head()
+
+
+res.df.to.plot <-
+  res.df %>% 
+  filter(padj < 0.05) %>% # keep only results with adjusted P value less than 0.05
+  mutate(Genus= row) %>% # Create Phylum column
+  left_join(tax_table(ps.to.dseq )@.Data %>% data.frame(), by = "Genus") %>% # Add taxonomy information from the phyloseq object.
+  # Arrange the data for a prettier plot
+  arrange(log2FoldChange) %>% 
+  mutate(Genus= factor(Genus, levels = Genus %>% unique()))
+head(res.df.to.plot)
+#row baseMean log2FoldChange     lfcSE     stat       pvalue        padj   Genus   Kingdom       Phylum   Class           Order    Family  unique
+#1 Digenea 33.40456       6.187303 0.6561378 9.429884 4.105436e-21 4.80336e-19 Digenea Eukaryota Opisthokonta Metazoa Platyhelminthes Trematoda Digenea
+#plot
+
+ggplot(res.df.to.plot, aes(x = log2FoldChange, y = Genus)) +
+  geom_jitter(aes(col = Genus, size = baseMean))  +
+  geom_vline(xintercept = 0)+
+  ggtitle("Abundance of differentGenus _PCR_Mansoni")
+
+
+
