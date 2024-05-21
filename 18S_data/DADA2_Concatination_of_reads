@@ -1,0 +1,157 @@
+## DADA2 pipeline run it in the medcluster 
+R
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocMa nager")
+BiocManager::install("dada2")
+
+install.packages("tidyverse")
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("phyloseq")
+
+install.packages("vegan")
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("microbiome")
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("DESeq2")
+
+
+##for new sessions#
+conda activate 18S_PR2_Madagascar
+
+R
+
+install.packages("tidyverse")
+library(tidyverse) 
+library(phyloseq) 
+library(microbiome)
+library(DESeq2)
+library(dada2)
+library(vegan)
+
+path="/work_beegfs/ikmb_repository/shared/microbiome/rawdata/Johanna/18S_Sequencing_MasterThesis_Johanna_1442" 
+# list all files
+fns <- list.files(path)
+
+# keep only FastQ files
+fastqs <- fns[grepl(".fastq.gz$", fns)]
+fastqs <- sort(fastqs) # Sort ensures forward/reverse reads are in same order
+
+### make sure that R1 is for forward read and R2 for reverse
+
+fnFs <- fastqs[grepl("R1_001.fastq.gz", fastqs)] ## Just the forward read files
+fnRs <- fastqs[grepl("R2_001.fastq.gz", fastqs)] ## Just the reverse read files
+
+# Sample names are derived from the filenames
+sample.names <- sapply(strsplit(fnFs, "_"), `[`, 2)
+cat(paste0("Starting processing for ",length(sample.names)," samples\n"))
+duplicated(sample.names)
+
+## Fully specify the path for the fnFs and fnRs
+fnFs_full <- file.path(path, fnFs)
+fnRs_full <- file.path(path, fnRs)
+
+# Quality profiles
+plotQualityProfile(c(fnFs_full[1:2],fnRs_full[1:2]))
+dev.off()
+
+###save the Rplots#
+scp sukmb626@medcluster.medfdm.uni-kiel.de:/work_beegfs/sukmb626/Euk_Madagascar/Rplots.pdf \\i-kmb.de\ikmb\Users\j.saalfrank\Downloads
+
+outdir=paste0("data")
+
+### create folders for intermediate files
+filt_path <- file.path(outdir, "filtered") # Place filtered files in filtered/ subdirectory
+filtFs <- file.path(filt_path, paste0(sample.names, "_F_filt.fastq.gz"))
+filtRs <- file.path(filt_path, paste0(sample.names, "_R_filt.fastq.gz"))
+
+### perform the Trimming and Filtering
+duplicated(c(filtFs, filtRs)) #should be false#
+out <- filterAndTrim(fnFs_full, filtFs, fnRs_full, filtRs, truncLen=c(250,210),trimLeft=c(5, 5), maxN=0, maxEE=c(2,2), truncQ=5, rm.phix=TRUE, compress=TRUE, multithread=4)
+out1 <- out[!(row.names(out) %in% c("221200000007-DS384_22Dez7-DL384_S384_L001_R1_001.fastq.gz")),]
+dim (out1)    
+                           
+### Check reads after trimming                                         
+plotQualityProfile(c(filtFs[1:2], fnFs_full[1:2]))
+plotQualityProfile(c(filtRs[1:2], fnRs_full[1:2]))
+                     
+## create output directory
+
+dir.create(paste0(outdir,"/errors"),recursive=T,showWarnings=F)
+
+## Learn forward error rates
+
+errF <- learnErrors(filtFs, nbases=100000000, multithread=4)
+saveRDS(errF, paste0(outdir,"/errors/errF.Rds"))
+
+## Learn reverse error rates
+errR <- learnErrors(filtRs, nbases=100000000, multithread=4)
+saveRDS(errR, paste0(outdir,"/errors/errR.Rds"))
+
+plotErrors(errR, nominalQ=TRUE)
+#save the plot
+png("myplot.png")
+#plot code
+dev.off()
+
+# Dereplication
+filtFs <- filtFs[file.exists(filtFs)]
+    
+derepFs <- derepFastq(filtFs, verbose=FALSE)
+derepRs <- derepFastq(filtRs, verbose=FALSE) 
+ 
+# Sequence inference
+dadaFs <- dada(derepFs, err=errF, multithread=4)
+dadaRs <- dada(derepRs, err=errR, multithread=4)  
+
+#when the vectors of sample name and dadaFs are nor equal#
+sample.names <- sapply(strsplit(basename(filtFs), "_"), `[`, 1)
+
+ # Sequence inference
+dadaFs <- dada(derepFs, err=errF, multithread=4)
+dadaRs <- dada(derepRs, err=errR, multithread=4)
+
+## Sequence merging
+mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs, justConcatenate = TRUE)
+
+# Chimera identification
+seqtab <- makeSequenceTable(mergers)
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=4, verbose=TRUE)
+
+#check the dim of the files
+
+dim (out1)
+dim (dadaFs)
+dim (mergers)
+dim (seqtab)
+dim (seqtab.nochim)
+length (sample.names)
+
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out, sapply(dadaFs, getN), sapply(mergers, getN), rowSums(seqtab), rowSums(seqtab.nochim))
+colnames(track) <- c("input", "filtered", "denoised", "merged", "tabled", "nonchim")
+rownames(track) <- sample.names
+track
+
+
+##changes to be made if needed##
+dada_forward<- dada(derep_forward, err=err_forward_reads, pool="pseudo", multithread =TRUE)
+dada_reverse<- dada(derep_reverse, err=err_reverse_reads, pool="pseudo", multithread =TRUE)
+
+out <- out[file.exists(filtF),]
+
+
+
+
+#another way to concatenate
+merger <- mergePairs(ddF, drpF, ddR, drpR, returnRejects=TRUE)
+concat <- mergePairs(ddF, drpF, ddR, drpR, justConcatenate=TRUE)
+merger[!merger$accept,] <- concat[!merger$accept,]
+
+
