@@ -1,0 +1,32 @@
+##Here, I am going to annotate the seqtab.nochim to the PR2 database (version 5.0.0. downloaded 22.05.2024)
+##Note: PR2 has different taxLevels than the dada2 default. When assigning taxonomy against PR2,  Domain (replacing Kingdom), Supergroup, Division, Subdivision, Class, Order, Family, Genus, and Species
+use the following: assignTaxonomy(..., taxLevels = c("Domain","Supergroup","Division","Subdevision", "Class","Order","Family","Genus","Species"))
+
+library(dada2); packageVersion("dada2")
+
+##where the PR2 database is stored
+path_PR2 <- "/work_beegfs/ikmb_repository/databases/PR2/pr2_version_5.0.0_SSU_dada2.fasta"
+
+
+#assign taxonomy to the seqtab.nochim generated in the session before and think about the different texLevels 
+taxa <- assignTaxonomy(seqtab.nochim, path_PR2, multithread=TRUE, taxLevels = c("Domain","Supergroup","Division","Subdevision", "Class","Order","Family","Genus","Species"))
+
+
+
+#check the fist lines of the taxa_table so that in the end can work with it! 
+taxa.print <- taxa # Removing sequence rownames for display only
+rownames(taxa.print) <- NULL
+head(taxa.print)
+
+
+##continue with PHYLOSEQ
+
+
+
+
+
+
+
+
+
+
