@@ -125,6 +125,12 @@ mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs, justConcatenate = TRUE)
 seqtab <- makeSequenceTable(mergers)
 seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=4, verbose=TRUE)
 
+safeRDS(seqtab.nochim, "/home/sukmb626/seqtab.nochim_18S.rds")
+safeRDS(seqtab, "/home/sukmb626/seqtab.rds")
+
+
+
+
 #check the dim of the files
 
 dim (out1)
@@ -139,6 +145,9 @@ track <- cbind(out, sapply(dadaFs, getN), sapply(mergers, getN), rowSums(seqtab)
 colnames(track) <- c("input", "filtered", "denoised", "merged", "tabled", "nonchim")
 rownames(track) <- sample.names
 track
+
+
+##
 
 
 
