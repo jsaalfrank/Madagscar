@@ -20,29 +20,43 @@ library(ggplot2)
 setwd("/home/sukmb626") #wherever you wanna work on the medcluster
 
 
+
+
 ## microbiome information
 
-micro <- readRDS(paste0("seqtab_nochim_18S.Rds"))
+seqtab.nochim <- readRDS(paste0("seqtab_nochim_18S.Rds"))
+
+current_row_names <- rownames(seqtab.nochim)
+new_row_names <- sub("_F_filt.fastq\\.gz$" , "", current_row_names)
+rownames(seqtab.nochim) <- new_row_names
+View(seqtab.nochim)
+micro <- seqtab.nochim
 
 ## taxonomy information, generated with "assign_taxonomy" beforehand
 taxonomy <- taxa 
 
 ##include the metadata of the samples 
-samples <- read_excel("SCHISDIMA_Metadata_NGS-ID.xlsx")
-head(samples)
+samples <- SCHISDIMA_Metadata_NGS_ID
 
 #the the NGS_ID as the rownames of the samples, so we can do the phyloseq-object generation easily
 row.names(samples) <- samples$NGS_ID
 head(samples)
 
-samples <- samples[, -c(3)]
+samples <- samples[, -c(2)]
 head(samples)
 
 
 ## order the tables, so that NGS ID will fit to each another and we can generate the phyloseq object
 
 ordered_micro <- micro[order(rownames(micro)),]
+
+current_row_names <- rownames(ordered_micro)
+new_row_names <- sub("_F_filt.fastq\\.gz$" , "", current_row_names)
+rownames(ordered_micro) <- new_row_names
+
+
 ordered_taxonomy <- taxonomy[order(rownames(taxonomy)),]
+
 ordered_samples <- samples[order(rownames(samples)),]
 
 
@@ -52,14 +66,18 @@ ID_NTC_Mock <- readRDS("/home/sukmb626/ID_NTC_Mock.rds")
 head(ID_NTC_Mock)
 ID_NTC_Mock <- NTC_Mock_IDS$ID
 rows_to_remove <- ID_NTC_Mock
-ordered_micro <- ordered_micro[!(rownames(ordered_micro) %in% rows_to_remove), ]
+ordered_micro <- ordered_micro[(rownames(ordered_micro) %in% rownames_samples), ]
 ordered_taxonomy <- ordered_taxonomy[!(rownames(ordered_taxonomy) %in% rows_to_remove), ]
 
 
 ## check if the rownames of the different phyoseq-components would be the same
 
-identical(ordered_taxonomy %>% rownames(), ordered_micro %>% colnames())
+identical(taxa %>% rownames(), micro %>% colnames())
+TRUE? NICE
+
 identical(ordered_micro %>% rownames(), ordered_samples$NGS_ID)
+FALSE? Shit: 
+
 
 identical(ordered_taxonomy %>% rownames(), ordered_micro %>% colnames())
 
@@ -89,7 +107,7 @@ identical(ordered_micro %>% rownames(), ordered_samples$NGS_ID)
 ##If all are identical, the Phyloseq object can be generated: 
 
 tax.ps <-
-  tax_table(tax %>% as.matrix())
+  tax_table(taxa %>% as.matrix())
 
 micro.ps <-
   otu_table(ordered_micro, taxa_are_rows = F)
@@ -108,5 +126,7 @@ ps <-
 ps
 
 saveRDS(ps, "/home/sukmb626/ps_18S.rds")
+
+
 
 ##continue in R studio to generate alpha and beta diversity plots 
