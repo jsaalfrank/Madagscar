@@ -1,0 +1,188 @@
+##Start with the phyloseq-object generated beforehand
+
+library(tidyverse) # Use of pipe and lots of functions for a better R coding
+library(phyloseq) # Because we are going to work with microbioe data using phyloseq object
+library(vegan) # Many ecology related functions
+library(microbiome) # some useful functions
+library(DESeq2)# Test with negative binomial models
+library(dplyr) 
+library(dada2); packageVersion("dada2")
+library(magrittr)
+library(dplyr)
+
+
+##the R-workpackage you need is: "/home/sukmb626/phyloseq.RDataTmp" ; the phyloseq obejct we need is: "/home/submb626/ps_18S.rds"
+
+
+ps <- ps_18S
+
+summary(sample_sums(ps))
+
+##   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##      0    4864    8229   11999   14162  103744 
+
+#Since we are interested in alpha diversity, it is probably not a bad idea to prune OTUs that are not present in any of the samples 
+#(for some reason there are a few in "ps") – BUT DON’T TRIM MORE THAN THAT! I know it is tempting to trim noise right away, 
+#but many richness estimates are modeled on singletons and doubletons in the abundance data. You need to leave them in the dataset if you 
+#want a meaningful estimate.
+pruned <-prune_taxa(taxa_sums(ps) > 0, ps)
+taxa_sums(pruned)
+summary(taxa_sums(pruned))
+
+  ##   Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+   ##  1.0      6.0     18.0    335.8     52.0 136700.0 
+
+
+# cut out also the samples that are zero
+pruned <-prune_samples(sample_sums(pruned) > 0, pruned)
+summary(sample_sums(pruned))
+   Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+      1    4871    8234   12023   14179  103744 
+
+
+
+#see the counts of your 18S read
+counts <-
+  pruned %>% 
+  otu_table() %>%
+  data.frame() %>% 
+  rowSums()
+counts
+
+
+#To have it a bit nicer, let's use pipes and ggplot2 to visualize this
+
+
+to.plot <-
+  counts %>% 
+  data.frame(counts = ., Sample = names(.))
+
+## this is plotting the reads 
+ggplot(to.plot, aes(x = Sample, y = counts)) +
+  geom_col() +
+  geom_hline(yintercept = 1000) + # add horizontal line 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+get_taxa_unique(pruned, "Domain")
+[1] "Bacteria"       "Eukaryota"      "Archaea"        NA               "Eukaryota:plas" "Eukaryota:mito" "Eukaryota:nucl"
+
+##keep only ready for Eukaryota
+
+justeukaryotes_merged = subset_taxa(pruned, Domain == "Eukaryota")
+
+
+
+###ALPHA DIVERSITY
+
+### Visualization ##does'nt work with the Fisher's thingy
+
+richness <- estimate_richness(ps, measures = c("Observed", "Chao1", "ACE", "Shannon"))
+
+plot_richness(ps, measures = c("Observed", "Chao1", "ACE", "Shannon"))
+
+
+##Let's do Data for the Just Eukaryotes_Thing! 
+#######alphaDiversity##########
+
+pruned_even_depth <- rarefy_even_depth(animals_fungi, sample.size = 1000)
+
+
+
+rich.Shannon <- # create a rich datafram, ways easier to plot
+  pruned_even_depth %>%
+  estimate_richness(measures = "Shannon") %>% # get alpha diversity
+  rownames_to_column("pid") %>% #format
+  left_join(sample_data(pruned_even_depth) %>% data.frame(), by = "pid")
+
+
+###continue this later
+
+
+###BETA DIVERSITY kommt Später
+
+##Taxonomy
+GP <- rarefy_even_depth(pruned) # make all samples with the same sequencing depth using rarefaction
+
+###wanna do taxonomy! 
+
+###regarding Class
+
+GP <- pruned_even_depth # make all samples with the same sequencing depth using rarefaction
+class.sum = tapply(taxa_sums(GP), tax_table(GP)[, "Class"], sum, na.rm=TRUE)
+top10class = names(sort(class.sum, TRUE))[1:10]
+GP_mostclass = prune_taxa((tax_table(GP)[, "Class"] %in% top10class), GP)
+
+subset_p1 <- subset_samples(GP_mostclass, pcr_mansoni %in% c("0", "1"))
+
+ps.rel = transform_sample_counts(subset_p1, function(x) x/sum(x)*100)
+# agglomerate taxa
+glom <- tax_glom(ps.rel, taxrank = 'Class', NArm = FALSE)
+ps.melt <- psmelt(glom)
+# change to character for easy-adjusted level
+ps.melt$Class <- as.character(ps.melt$Class)
+
+ps.melt <- ps.melt %>%
+  group_by(pcr_mansoni, Class) %>%
+  mutate(median=median(Abundance))
+
+ps.melt_sum <- ps.melt %>%
+  group_by(pcr_mansoni,Class) %>%
+  summarise(Abundance=sum(Abundance))
+
+
+ggplot(ps.melt_sum, aes(x = pcr_mansoni, y = Abundance, fill = Class)) + 
+  geom_bar(stat = "identity", aes(fill=Class), position = "fill" ) + 
+  labs(x="pcr_mansoni", y="Relative Abundance%") +
+  facet_wrap(~pcr_mansoni, scales= "free_x", nrow=1) +
+  ggtitle("Taxonomy_ClassLevel") +
+  theme_classic() + 
+  theme(strip.background = element_blank(), 
+        axis.text.x.bottom = element_text(angle = -90))
+
+
+
+###regarding Genus
+
+GP <- pruned_even_depth # make all samples with the same sequencing depth using rarefaction
+genus.sum = tapply(taxa_sums(GP), tax_table(GP)[, "Genus"], sum, na.rm=TRUE)
+top20genus = names(sort(genus.sum, TRUE))[1:20]
+GP_mostgenus = prune_taxa((tax_table(GP)[, "Genus"] %in% top20genus), GP)
+
+
+pruned_even_depth %>% microbiome::aggregate_top_taxa(top = 20, level = "Genus") %>% # Here we used the function from the package microbiome to reduce the number of taxa to the top 10. The rest is lumped into the category "other"
+  rarefy_even_depth() %>% 
+  plot_bar(x="pcr_mansoni", fill="Genus") +
+  facet_wrap(~ pcr_mansoni, scales = "free")
+
+
+subset_p1 <- subset_samples(GP_mostgenus, pcr_mansoni %in% c("0", "1"))
+
+ps.rel = transform_sample_counts(subset_p1, function(x) x/sum(x)*100)
+
+tax_table(ps.rel)[is.na(tax_table(ps.rel))] <- "unknown"
+
+
+# agglomerate taxa
+glom <- tax_glom(ps.rel, taxrank = 'Genus', NArm = FALSE)
+ps.melt <- psmelt(glom)
+# change to character for easy-adjusted level
+ps.melt$Genus <- as.character(ps.melt$Genus)
+
+ps.melt <- ps.melt %>%
+  group_by(pcr_mansoni, Genus) %>%
+  mutate(median=median(Abundance))
+
+ps.melt_sum <- ps.melt %>%
+  group_by(pcr_mansoni,Genus) %>%
+  summarise(Abundance=sum(Abundance))
+
+
+ggplot(ps.melt_sum, aes(x = pcr_mansoni, y = Abundance, fill = Genus)) + 
+  geom_bar(stat = "identity", aes(fill=Class), position = "fill" ) + 
+  labs(x="pcr_mansoni", y="Relative Abundance%") +
+  facet_wrap(~pcr_mansoni, scales= "free_x", nrow=1) +
+  ggtitle("Taxonomy_GenusLevel") +
+  theme_classic() + 
+  theme(strip.background = element_blank(), 
+        axis.text.x.bottom = element_text(angle = -90))
+
