@@ -1,0 +1,31 @@
+ps.ord <- pruned_even_depth %>% # let's rarefy the data to make sure that sequencing depth is similar for all samples
+  ordinate("NMDS", "bray")
+p1 = plot_ordination(pruned_even_depth, ps.ord, type="NGS_ID", color="c_b01_csbnom_s")+
+  coord_cartesian(xlim = c(-1, 1), ylim = c(-1, 1))
+print(p1)
+
+
+x = c_b04_sex_d ##here any kind of variable can be put in. 
+
+p2 =plot_ordination(pruned_even_depth, ps.ord, type = "samples", color = "x") + 
+  stat_ellipse(mapping= aes(fill = x),geom = "polygon", alpha = 0.1, show.legend = FALSE) +
+  #scale_shape_manual(values=c(1,0)) +
+  coord_cartesian(xlim = c(-1, 1), ylim = c(-1, 1))+
+  #scale_color_manual(values = custom_colors_pcr_haematobium ) +
+  #scale_fill_manual(values = custom_colors_pcr_haematobium ) +
+  theme_bw() 
+  
+  print(p2)
+  
+
+##test the significance
+
+micro.dis <-
+  pruned_even_depth %>% # let's rarefy the data to make sure that sequencing depth is similar for all samples
+  phyloseq::distance("bray")
+
+
+x= c_b04_sex_d ##here any kind of variable can be put in. 
+
+
+adonis2(micro.dis ~ c_b04_sex_d + pcr_mansoni, data = pruned_even_depth %>% sample_data() %>% data.frame())
