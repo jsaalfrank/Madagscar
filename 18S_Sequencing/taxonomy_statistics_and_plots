@@ -1,0 +1,126 @@
+###TAXONOMY 
+
+##the PR2 database got 8 different taxonomic ranks: Domain (replacing Kingdom), Supergroup, Division, Subdivision (new taxonomic rank added), Class, Order, Family, Genus, and Species (https://pr2-database.org/documentation/pr2-taxonomy-9-levels/#:~:text=The%20nine%20taxonomic%20ranks%20now,Family%2C%20Genus%2C%20and%20Species) 
+##this is what to keep in mind, when analysizing the 18S reads
+
+
+###regarding Class
+
+GP <- pruned_even_depth # make all samples with the same sequencing depth using rarefaction
+GP
+##choose the ones that are PCR_Mansoni positiv! 
+
+subset_p1 <- subset_samples(GP_mostclass, pcr_mansoni %in% c("0", "1"))
+
+ps.rel = transform_sample_counts(GP_mostclass, function(x) x/sum(x)*100)
+# agglomerate taxa
+glom <- tax_glom(ps.rel, taxrank = 'Class', NArm = FALSE)
+ps.melt <- psmelt(glom)
+# change to character for easy-adjusted level
+ps.melt$Class <- as.character(ps.melt$Class)
+
+ps.melt <- ps.melt %>%
+  group_by(pcr_mansoni, Class) %>%
+  mutate(median=median(Abundance))
+
+ps.melt_sum <- ps.melt %>%
+  group_by(pcr_mansoni,Class) %>%
+  summarise(Abundance=sum(Abundance))
+
+
+ggplot(ps.melt_sum, aes(x = pcr_mansoni, y = Abundance, fill = Class)) + 
+  geom_bar(stat = "identity", aes(fill=Class), position = "fill" ) + 
+  labs(x="pcr_mansoni", y="Relative Abundance%") +
+  facet_wrap(~pcr_mansoni, scales= "free_x", nrow=1) +
+  ggtitle("Taxonomy_ClassLevel") +
+  theme_classic() + 
+  theme(strip.background = element_blank(), 
+        axis.text.x.bottom = element_text(angle = -90))
+
+###LOCATION
+ps.melt <- ps.melt %>%
+  group_by(c_b01_csbnom_s, Class) %>%
+  mutate(median=median(Abundance))
+
+ps.melt_sum <- ps.melt %>%
+  group_by(c_b01_csbnom_s,Class) %>%
+  summarise(Abundance=sum(Abundance))
+
+
+ggplot(ps.melt_sum, aes(x = c_b01_csbnom_s, y = Abundance, fill = Class)) + 
+  geom_bar(stat = "identity", aes(fill=Class), position = "fill" ) + 
+  labs(x="pcr_mansoni", y="Relative Abundance%") +
+  facet_wrap(~c_b01_csbnom_s, scales= "free_x", nrow=1) +
+  ggtitle("Taxonomy_ClassLevel") +
+  theme_classic() + 
+  theme(strip.background = element_blank(), 
+        axis.text.x.bottom = element_text(angle = -90))
+
+
+
+
+
+
+###regarding Genus
+
+GP <- pruned_even_depth # make all samples with the same sequencing depth using rarefaction
+genus.sum = tapply(taxa_sums(GP), tax_table(GP)[, "Genus"], sum, na.rm=TRUE)
+top20genus = names(sort(genus.sum, TRUE))[1:20]
+GP_mostgenus = prune_taxa((tax_table(GP)[, "Genus"] %in% top20genus), GP)
+
+subset_p1 <- subset_samples(GP_mostgenus, pcr_mansoni %in% c("0", "1"))
+
+
+ps.rel = transform_sample_counts(GP_mostgenus, function(x) x/sum(x)*100)
+# agglomerate taxa
+glom <- tax_glom(ps.rel, taxrank = 'Genus', NArm = FALSE)
+ps.melt <- psmelt(glom)
+# change to character for easy-adjusted level
+ps.melt$Class <- as.character(ps.melt$Class)
+
+ps.melt <- ps.melt %>%
+  group_by(pcr_mansoni, Class) %>%
+  mutate(median=median(Abundance))
+
+ps.melt_sum <- ps.melt %>%
+  group_by(pcr_mansoni,Class) %>%
+  summarise(Abundance=sum(Abundance))
+
+
+
+pruned_even_depth %>% microbiome::aggregate_top_taxa(top = 20, level = "Genus") %>% # Here we used the function from the package microbiome to reduce the number of taxa to the top 10. The rest is lumped into the category "other"
+  rarefy_even_depth() %>% 
+  plot_bar(x="pcr_mansoni", fill="Genus") +
+  facet_wrap(~ pcr_mansoni, scales = "free")
+
+
+subset_p1 <- subset_samples(GP_mostgenus, pcr_mansoni %in% c("0", "1"))
+
+ps.rel = transform_sample_counts(subset_p1, function(x) x/sum(x)*100)
+
+tax_table(ps.rel)[is.na(tax_table(ps.rel))] <- "unknown"
+
+
+# agglomerate taxa
+glom <- tax_glom(ps.rel, taxrank = 'Genus', NArm = FALSE)
+ps.melt <- psmelt(glom)
+# change to character for easy-adjusted level
+ps.melt$Genus <- as.character(ps.melt$Genus)
+
+ps.melt <- ps.melt %>%
+  group_by(pcr_mansoni, Genus) %>%
+  mutate(median=median(Abundance))
+
+ps.melt_sum <- ps.melt %>%
+  group_by(pcr_mansoni,Genus) %>%
+  summarise(Abundance=sum(Abundance))
+
+
+ggplot(ps.melt_sum, aes(x = pcr_mansoni, y = Abundance, fill = Genus)) + 
+  geom_bar(stat = "identity", aes(fill=Class), position = "fill" ) + 
+  labs(x="pcr_mansoni", y="Relative Abundance%") +
+  facet_wrap(~pcr_mansoni, scales= "free_x", nrow=1) +
+  ggtitle("Taxonomy_GenusLevel") +
+  theme_classic() + 
+  theme(strip.background = element_blank(), 
+        axis.text.x.bottom = element_text(angle = -90))
