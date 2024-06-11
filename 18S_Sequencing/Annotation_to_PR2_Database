@@ -22,6 +22,7 @@ saveRDS(taxa, "/home/sukmb626/taxa.rds")
 
 ##continue with PHYLOSEQ
 
+#aassign species not passible, cause PR2 is assignTaxonomy-based
 
 
 
