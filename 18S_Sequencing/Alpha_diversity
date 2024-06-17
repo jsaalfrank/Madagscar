@@ -66,9 +66,9 @@ ggplot(to.plot, aes(x = Sample, y = counts)) +
 get_taxa_unique(pruned, "Domain")
 [1] "Bacteria"       "Eukaryota"      "Archaea"        NA               "Eukaryota:plas" "Eukaryota:mito" "Eukaryota:nucl"
 
-##keep only ready for Eukaryota
+##keep only ready for Eukaryota and Archaea
 
-justeukaryotes_merged = subset_taxa(pruned, Domain == "Eukaryota")
+justeukaryotes_merged = subset_taxa(pruned, Domain != "Bacteria")
 
 
 
@@ -76,9 +76,9 @@ justeukaryotes_merged = subset_taxa(pruned, Domain == "Eukaryota")
 
 ### Visualization ##does'nt work with the Fisher's thingy
 
-richness <- estimate_richness(ps, measures = c("Observed", "Chao1", "ACE", "Shannon"))
+richness <- estimate_richness(justeukaryotes_merged, measures = c("Observed", "Chao1", "ACE", "Shannon"))
 
-plot_richness(ps, measures = c("Observed", "Chao1", "ACE", "Shannon"))
+plot_richness(richness, x="diagnosis",col="sex", measures = c("Observed", "Chao1", "ACE", "Shannon"))
 
 
 ##Let's do Data for the Just Eukaryotes_Thing! 
@@ -86,16 +86,87 @@ plot_richness(ps, measures = c("Observed", "Chao1", "ACE", "Shannon"))
 
 pruned_even_depth <- rarefy_even_depth(animals_fungi, sample.size = 1000)
 
+rich.CHAO1 <- # create a rich datafram, ways easier to plot
+         pruned_even_depth %>%
+          estimate_richness(measures = "Chao1") %>% # get alpha diversity
+          rownames_to_column("pid")
+ rich.Shannon <- # create a rich datafram, ways easier to plot
+        pruned_even_depth %>%
+         estimate_richness(measures = "Shannon") %>% # get alpha diversity
+        rownames_to_column("pid")
+
+ rich.observed<- # create a rich datafram, ways easier to plot
+         pruned_even_depth %>%
+          estimate_richness(measures = "Observed") %>% # get alpha diversity
+          rownames_to_column("pid")
+ Alpha.Diversity <- cbind(sample_data(pruned_even_depth), rich.Shannon, rich.CHAO1, rich.observed)
 
 
-rich.Shannon <- # create a rich datafram, ways easier to plot
-  pruned_even_depth %>%
+
+
+
+
+
+
+
+rich <-
+  ps %>% 
+  rarefy_even_depth() %>% # let's rarefy the data to make sure that sequencing depth is similar for all samples
   estimate_richness(measures = "Shannon") %>% # get alpha diversity
   rownames_to_column("pid") %>% #format
-  left_join(sample_data(pruned_even_depth) %>% data.frame(), by = "pid")
+  left_join(sample_data(ps) %>% data.frame(), by = "pid") # here I am combining the output of estimate richness with the sample data of the phyloseq object. I need to transform it to data.frame first
 
 
-###continue this later
+
+###continue this 17.6.
+
+
+##übertrieben nervig, aber "Alpha.Diversity" heißt der dataframe in dem Alpha-Diversity niedergeschrieben ist. 
+##remove pid.1 & pid.2 spalten 
+##plot Shannon und Chao diversity für "pcr_mansoni2 und location " 
+
+subset <- subset(Alpha.Diversity, pcr_mansoni %in% c("0", "1"))
+
+subset$pcr_mansoni[subset$pcr_mansoni== "0"] <- "negative"
+subset$pcr_mansoni[subset$pcr_mansoni == "1"] <- "positive"
+
+SHANNON.PLOT <- ggplot(subset, aes(x = pcr_mansoni, y = Shannon)) +
+  geom_boxplot(aes(x = pcr_mansoni, y = Shannon)) +
+  #ggtitle("AlphaDiversity_pcr_mansoni_18S")+
+  geom_jitter()
+
+CHAO1.PLOT <- ggplot(subset, aes(x = pcr_mansoni, y = Chao1)) +
+  geom_boxplot(aes(x = pcr_mansoni, y = Chao1)) +
+  geom_jitter()
+
+Plots_SchistoMansoni <- grid.arrange(SHANNON.PLOT, CHAO1.PLOT,nrow = 1, ncol = 2) 
+
+
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Shannon ~ pcr_mansoni, data = .)
+
+Wilcoxon rank sum test with continuity correction
+
+data:  Shannon by pcr_mansoni
+W = 105445, p-value = 0.1301
+alternative hypothesis: true location shift is not equal to 0
+
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Chao1 ~ pcr_mansoni, data = .)
+
+
+
+	Wilcoxon rank sum test with continuity correction
+
+data:  Chao1 by pcr_mansoni
+W = 114822, p-value = 8.157e-05
+alternative hypothesis: true location shift is not equal to 0
+
+
 
 
 ###BETA DIVERSITY kommt Später
