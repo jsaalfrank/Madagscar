@@ -4,5 +4,7 @@
 
 us the 20 most abundand Genus and create a heatmap out of this information 
 
-
+pseq <- GP_mostgenus
+glom <- tax_glom(pseq, taxrank = 'Genus', NArm = FALSE)
+pseq2 <- glom
 
