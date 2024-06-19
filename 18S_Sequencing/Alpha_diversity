@@ -130,19 +130,54 @@ subset <- subset(Alpha.Diversity, pcr_mansoni %in% c("0", "1"))
 subset$pcr_mansoni[subset$pcr_mansoni== "0"] <- "negative"
 subset$pcr_mansoni[subset$pcr_mansoni == "1"] <- "positive"
 
-SHANNON.PLOT <- ggplot(subset, aes(x = pcr_mansoni, y = Shannon)) +
-  geom_boxplot(aes(x = pcr_mansoni, y = Shannon)) +
+ggplot(subset, aes(x = pcr_mansoni, y = Shannon)) +
+        geom_jitter(aes(color = factor(pcr_mansoni)), width = 0.1, height = 0, alpha = 0.3, size = 2)+
+        geom_boxplot(aes(group = pcr_mansoni), width = 0.3, fill = NA, color = "black", size = 1.2) +
+       #ggtitle("AlphaDiversity_pcr_mansoni_18S")+
+        scale_color_manual(values = c("negative" = "orange", "positive" = "red")) +
+        labs(x = "S.mansoni Infection", y = "Shannon")
+        color = expression(italic("S.mansoni")~infection), 
+        fill = expression(italic("S.mansoni")~infection)) +
+        theme_minimal()
+
+ggplot(subset, aes(x = pcr_mansoni, y = Chao1)) +
+       geom_jitter(aes(color = factor(pcr_mansoni)), width = 0.1, height = 0, alpha = 0.3, size = 2)+
+       geom_boxplot(aes(group = pcr_mansoni), width = 0.3, fill = NA, color = "black", size = 1.2) +
+       #ggtitle("AlphaDiversity_pcr_mansoni_18S")+
+       scale_color_manual(values = c("negative" = "orange", "positive" = "red")) +
+       labs(x = "S.mansoni Infection", y = "Chao1", 
+       color = expression(italic("S.mansoni")~infection), 
+       fill = expression(italic("S.mansoni")~infection)) +
+       theme_minimal() 
+
+
+subset <- subset(Alpha.Diversity, c_b01_csbnom_s %in% c("MA_Mahajanga_Ankazomborona", "TO_Tsiroanomandidy", "FA_Andina"))
+subset$c_b01_csbnom_s[subset$c_b01_csbnom_s== "FA_Andina"] <- "Andina"
+subset$c_b01_csbnom_s[subset$c_b01_csbnom_s == "TO_Tsiroanomandidy"] <- "Tsiroanomandidy"
+subset$c_b01_csbnom_s[subset$c_b01_csbnom_s == "MA_Mahajanga_Ankazomborona"] <- "Mahajanga"
+
+ggplot(subset, aes(x = c_b01_csbnom_s, y = Chao1)) +
+  geom_jitter(aes(color = factor(c_b01_csbnom_s)), width = 0.1, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = c_b01_csbnom_s), width = 0.3, fill = NA, color = "black", size = 1.2) +
   #ggtitle("AlphaDiversity_pcr_mansoni_18S")+
-  geom_jitter()
-
-CHAO1.PLOT <- ggplot(subset, aes(x = pcr_mansoni, y = Chao1)) +
-  geom_boxplot(aes(x = pcr_mansoni, y = Chao1)) +
-  geom_jitter()
-
-Plots_SchistoMansoni <- grid.arrange(SHANNON.PLOT, CHAO1.PLOT,nrow = 1, ncol = 2) 
+  scale_color_manual(values = c("Andina" = "cornflowerblue", "Mahajanga" = "cadetblue", "Tsiroanomandidy" = "blue")) +
+  labs(x = "Location", y = "Chao1", 
+       color = expression("Location"), 
+       fill = expression("Location")) + 
+        theme_minimal() 
 
 
 
+
+ggplot(subset, aes(x = c_b01_csbnom_s, y = Shannon)) +
+  geom_jitter(aes(color = factor(c_b01_csbnom_s)), width = 0.1, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = c_b01_csbnom_s), width = 0.3, fill = NA, color = "black", size = 1.2) +
+  #ggtitle("AlphaDiversity_pcr_mansoni_18S")+
+  scale_color_manual(values = c("Andina" = "cornflowerblue", "Mahajanga" = "cadetblue", "Tsiroanomandidy" = "blue")) +
+  labs(x = "Location", y = "Shannon", 
+       color = expression("Location"), 
+       fill = expression("Location")) + 
+  theme_minimal() 
 subset %>% 
   arrange(subset) %>% 
   wilcox.test(Shannon ~ pcr_mansoni, data = .)
@@ -159,12 +194,86 @@ subset %>%
   wilcox.test(Chao1 ~ pcr_mansoni, data = .)
 
 
-
 	Wilcoxon rank sum test with continuity correction
 
 data:  Chao1 by pcr_mansoni
 W = 114822, p-value = 8.157e-05
 alternative hypothesis: true location shift is not equal to 0
+
+
+##Statistics Location
+
+subset <- subset(Alpha.Diversity, c_b01_csbnom_s %in% c("MA_Mahajanga_Ankazomborona", "TO_Tsiroanomandidy"))
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Chao1 ~ c_b01_csbnom_s, data = .)
+	
+
+
+Wilcoxon rank sum test with continuity correction
+
+data:  Chao1 by c_b01_csbnom_s
+W = 40384, p-value = 9.341e-11
+alternative hypothesis: true location shift is not equal to 0
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Shannon ~ c_b01_csbnom_s, data = .)
+
+
+Wilcoxon rank sum test with continuity correction
+
+data:  Shannon by c_b01_csbnom_s
+W = 34862, p-value = 0.002665
+alternative hypothesis: true location shift is not equal to 0
+
+
+subset <- subset(Alpha.Diversity, c_b01_csbnom_s %in% c("MA_Mahajanga_Ankazomborona", "FA_Andina"))
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Chao1 ~ c_b01_csbnom_s, data = .)
+
+Wilcoxon rank sum test with continuity correction
+
+data:  Chao1 by c_b01_csbnom_s
+W = 18872, p-value < 2.2e-16
+alternative hypothesis: true location shift is not equal to 0
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Shannon ~ c_b01_csbnom_s, data = .)
+Wilcoxon rank sum test with continuity correction
+
+data:  Shannon by c_b01_csbnom_s
+W = 29904, p-value = 5.17e-07
+alternative hypothesis: true location shift is not equal to 0
+
+subset <- subset(Alpha.Diversity, c_b01_csbnom_s %in% c("TO_Tsiroanomandidy", "FA_Andina"))
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Chao1 ~ c_b01_csbnom_s, data = .)
+
+Wilcoxon rank sum test with continuity correction
+
+data:  Chao1 by c_b01_csbnom_s
+W = 49256, p-value = 1.003e-06
+alternative hypothesis: true location shift is not equal to 0
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Shannon ~ c_b01_csbnom_s, data = .)
+
+Wilcoxon rank sum test with continuity correction
+
+data:  Shannon by c_b01_csbnom_s
+W = 56827, p-value = 0.03386
+alternative hypothesis: true location shift is not equal to 0
+
+
+
+
 
 
 
@@ -173,6 +282,50 @@ alternative hypothesis: true location shift is not equal to 0
 
 ##Taxonomy
 GP <- rarefy_even_depth(pruned) # make all samples with the same sequencing depth using rarefaction
+
+
+subset <- subset(Alpha.Diversity, pcr_mansoni %in% c("0", "1"))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ###wanna do taxonomy! 
 
