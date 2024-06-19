@@ -1,31 +1,112 @@
-ps.ord <- pruned_even_depth %>% # let's rarefy the data to make sure that sequencing depth is similar for all samples
-  ordinate("NMDS", "bray")
-p1 = plot_ordination(pruned_even_depth, ps.ord, type="NGS_ID", color="c_b01_csbnom_s")+
-  coord_cartesian(xlim = c(-1, 1), ylim = c(-1, 1))
+
+justeukaryotes_merged = subset_taxa(ps, Domain != "Bacteria")
+
+summary(sample_sums(justeukaryotes_merged)) # all normalised to 1e6 reads already (i.e., TPM)
+ Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+      0    2352    5380    8154    9898  100898 
+
+counts <-
++     justeukaryotes_merged %>% 
++     otu_table() %>%
++     data.frame() %>% 
++     rowSums()
+
+counts
+
+
+
+##Remove all the 0 samples ... 
+
+justeukaryotes_merged = subset_taxa(ps, Domain != "Bacteria")
+justeukaryotes_merged <- prune_samples(sample_sums(justeukaryotes_merged) > 0, justeukaryotes_merged)
+justeukaryotes_merged  <- prune_taxa(taxa_sums(justeukaryotes_merged ) > 0, justeukaryotes_merged )
+
+pruned_even_depth <- rarefy_even_depth(justeukaryotes_merged, sample.size = 1000)
+pruned_even_depth <- subset_samples(pruned_even_depth, !is.na(sample_data(pruned_even_depth)$pcr_mansoni))
+sample_data(pruned_even_depth)$pcr_mansoni[sample_data(pruned_even_depth)$pcr_mansoni == "0"] <- "negative"
+sample_data(pruned_even_depth)$pcr_mansoni[sample_data(pruned_even_depth)$pcr_mansoni == "1"] <- "positive"
+
+ ps.ord <-
+     pruned_even_depth %>% 
+     #rarefy_even_depth() %>% # let's rarefy the data to make sure that sequencing depth is similar for all samples
+     ordinate("NMDS", "bray")
+
+
+p1 =plot_ordination(pruned_even_depth, ps.ord, type = "samples", color = "pcr_mansoni") + 
+   stat_ellipse(mapping= aes(fill = pcr_mansoni),geom = "polygon", alpha = 0.1, show.legend = FALSE) +
+   #scale_shape_manual(values=c(1,0)) +
+   coord_cartesian(xlim = c(-0.075, 0.075), ylim = c(-0.075, 0.075))+
+   scale_color_manual(values = c("negative" = "orange", "positive" = "red")) +
+   theme_bw() 
+
 print(p1)
-
-
-x = c_b04_sex_d ##here any kind of variable can be put in. 
-
-p2 =plot_ordination(pruned_even_depth, ps.ord, type = "samples", color = "x") + 
-  stat_ellipse(mapping= aes(fill = x),geom = "polygon", alpha = 0.1, show.legend = FALSE) +
-  #scale_shape_manual(values=c(1,0)) +
-  coord_cartesian(xlim = c(-1, 1), ylim = c(-1, 1))+
-  #scale_color_manual(values = custom_colors_pcr_haematobium ) +
-  #scale_fill_manual(values = custom_colors_pcr_haematobium ) +
-  theme_bw() 
-  
-  print(p2)
-  
-
-##test the significance
 
 micro.dis <-
   pruned_even_depth %>% # let's rarefy the data to make sure that sequencing depth is similar for all samples
   phyloseq::distance("bray")
 
+adonis2(micro.dis ~ pcr_mansoni, data = pruned_even_depth %>% sample_data() %>% data.frame())
+             
+Df SumOfSqs      R2      F Pr(>F)    
+pcr_mansoni   1     1.99 0.00494 4.5548  0.001 ***
+Residual    918   400.62 0.99506                  
+Total       919   402.61 1.00000                  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
-x= c_b04_sex_d ##here any kind of variable can be put in. 
+
+adonis2(micro.dis ~ pcr_mansoni + c_b01_csbnom_s + c_b04_sex_d, data = pruned_even_depth %>% sample_data() %>% data.frame())
+Permutation test for adonis under reduced model
+Terms added sequentially (first to last)
+Permutation: free
+Number of permutations: 999
+
+adonis2(formula = micro.dis ~ pcr_mansoni + c_b01_csbnom_s + c_b04_sex_d, data = pruned_even_depth %>% sample_data() %>% data.frame())
+                Df SumOfSqs      R2      F Pr(>F)    
+pcr_mansoni      1     1.99 0.00494 4.6431  0.001 ***
+c_b01_csbnom_s   2     8.13 0.02020 9.4998  0.001 ***
+c_b04_sex_d      1     0.78 0.00193 1.8121  0.003 ** 
+Residual       915   391.71 0.97293                  
+Total          919   402.61 1.00000                  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 
-adonis2(micro.dis ~ c_b04_sex_d + pcr_mansoni, data = pruned_even_depth %>% sample_data() %>% data.frame())
+
+
+
+
+
+sample_data(pruned_even_depth)$c_b01_csbnom_s[sample_data(pruned_even_depth)$c_b01_csbnom_s == "FA_Andina"] <- "Andina"
+sample_data(pruned_even_depth)$c_b01_csbnom_s[sample_data(pruned_even_depth)$c_b01_csbnom_s == "TO_Tsiroanomandidy"] <- "Tsiroanomandidy"
+sample_data(pruned_even_depth)$c_b01_csbnom_s[sample_data(pruned_even_depth)$c_b01_csbnom_s == "MA_Mahajanga_Ankazomborona"] <- "Mahajanga"
+
+p2 =plot_ordination(pruned_even_depth, ps.ord, type = "samples", color = "c_b01_csbnom_s") + 
+   stat_ellipse(mapping= aes(fill = c_b01_csbnom_s),geom = "polygon", alpha = 0.1, show.legend = FALSE) +
+   #scale_shape_manual(values=c(1,0)) +
+   coord_cartesian(xlim = c(-0.075, 0.075), ylim = c(-0.075, 0.075))+
+   scale_color_manual(values = c("Andina" = "cornflowerblue", "Tsiroanomandidy" = "cadetblue", "Mahajanga" = "blue")) +
+   theme_bw() 
+
+print(p2)
+
+pcr_mansoni
+
+adonis2(micro.dis ~ pcr_mansoni, data = justeukaryotes_merged %>% sample_data() %>% data.frame())
+
+Permutation test for adonis under reduced model
+Terms added sequentially (first to last)
+Permutation: free
+Number of permutations: 999
+
+adonis2(formula = micro.dis ~ pcr_mansoni, data = justeukaryotes_merged %>% sample_data() %>% data.frame())
+              Df SumOfSqs      R2      F Pr(>F)    
+pcr_mansoni    2    10.24 0.02252 11.645  0.001 ***
+Residual    1011   444.40 0.97748                  
+Total       1013   454.64 1.00000                  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+adonis2(micro.dis ~ pcr_mansoni + c_b01_csbnom_s, data = justeukaryotes_merged %>% sample_data() %>% data.frame())
+
+
