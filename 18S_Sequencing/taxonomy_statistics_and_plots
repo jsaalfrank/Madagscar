@@ -63,64 +63,81 @@ ggplot(ps.melt_sum, aes(x = c_b01_csbnom_s, y = Abundance, fill = Class)) +
 
 ###regarding Genus
 
-GP <- pruned_even_depth # make all samples with the same sequencing depth using rarefaction
-genus.sum = tapply(taxa_sums(GP), tax_table(GP)[, "Genus"], sum, na.rm=TRUE)
-top20genus = names(sort(genus.sum, TRUE))[1:20]
-GP_mostgenus = prune_taxa((tax_table(GP)[, "Genus"] %in% top20genus), GP)
+#Statistical Testing 
+library(tidyverse) # Use of pipe and lots of functions for a better R coding
+library(phyloseq) # Because we are going to work with microbioe data using phyloseq object
+library(vegan) # Many ecology related functions
+library(microbiome) # some useful functions
+library(DESeq2)# Test with negative binomial models
+library(dplyr) 
+library(dada2); packageVersion("dada2")
+library(magrittr)
+library(dplyr)
+library(DESeq2)
+
+ps.to.dseq <-
+  subset_p1 %>%
+  aggregate_taxa(level = "Genus")
 
 subset_p1 <- subset_samples(GP_mostgenus, pcr_mansoni %in% c("0", "1"))
 
 
-ps.rel = transform_sample_counts(GP_mostgenus, function(x) x/sum(x)*100)
-# agglomerate taxa
-glom <- tax_glom(ps.rel, taxrank = 'Genus', NArm = FALSE)
-ps.melt <- psmelt(glom)
-# change to character for easy-adjusted level
-ps.melt$Class <- as.character(ps.melt$Class)
 
-ps.melt <- ps.melt %>%
-  group_by(pcr_mansoni, Class) %>%
-  mutate(median=median(Abundance))
+dseq <-
+  ps.to.dseq %>% 
+  phyloseq_to_deseq2 (~pcr_mansoni)
 
-ps.melt_sum <- ps.melt %>%
-  group_by(pcr_mansoni,Class) %>%
-  summarise(Abundance=sum(Abundance))
+estimateSizeFactors(dseq, type = 'poscounts')
+dseq <- estimateSizeFactors(dseq, type = 'poscounts')
 
 
 
-pruned_even_depth %>% microbiome::aggregate_top_taxa(top = 20, level = "Genus") %>% # Here we used the function from the package microbiome to reduce the number of taxa to the top 10. The rest is lumped into the category "other"
-  rarefy_even_depth() %>% 
-  plot_bar(x="pcr_mansoni", fill="Genus") +
-  facet_wrap(~ pcr_mansoni, scales = "free")
+
+# Perform test. There is a lot going under the hood here, including: estimation of size factors, estimation of dispersion, and Negative Binomial GLM fitting and Wald statistics.
+res <-
+  DESeq(dseq)
+
+res %>% colData %>% head()
+
+# Extract the result table
+res.df <-
+  res %>% 
+  results(tidy = T)
+
+#Visualize what we got out of it
+res.df %>% head()
+```
+
+That's it! You can have a look at the res.df table and you will find the results of all the genus tested. Depending on your question, you can perform similar analysis to all levels, from phylum to ASV (subspecies level). 
+
+So, to finish, let's format this table and visualize the data using ggplot2.
+
+```{r}
+# Filter and format to plot
+res.df.to.plot <-
+  res.df %>% 
+  filter(padj < 0.05) %>% # keep only results with adjusted P value less than 0.05
+  mutate(Genus = row) %>% # Create Genus column
+  left_join(tax_table(ps.to.dseq )@.Data %>% data.frame(), by = "Genus") %>% # Add taxonomy information from the phyloseq object.
+  # Arrange the data for a prettier plot
+  arrange(log2FoldChange) %>% 
+  mutate(Genus = factor(Genus, levels = Genus %>% unique()))
+
+head(res.df.to.plot)
 
 
-subset_p1 <- subset_samples(GP_mostgenus, pcr_mansoni %in% c("0", "1"))
+#Plot
 
-ps.rel = transform_sample_counts(subset_p1, function(x) x/sum(x)*100)
-
-tax_table(ps.rel)[is.na(tax_table(ps.rel))] <- "unknown"
-
-
-# agglomerate taxa
-glom <- tax_glom(ps.rel, taxrank = 'Genus', NArm = FALSE)
-ps.melt <- psmelt(glom)
-# change to character for easy-adjusted level
-ps.melt$Genus <- as.character(ps.melt$Genus)
-
-ps.melt <- ps.melt %>%
-  group_by(pcr_mansoni, Genus) %>%
-  mutate(median=median(Abundance))
-
-ps.melt_sum <- ps.melt %>%
-  group_by(pcr_mansoni,Genus) %>%
-  summarise(Abundance=sum(Abundance))
+ggplot(res.df.to.plot, aes(x = log2FoldChange, y = Genus)) +
+  geom_jitter(aes(col = Genus, size = baseMean))  +
+  geom_vline(xintercept = 0)
 
 
-ggplot(ps.melt_sum, aes(x = pcr_mansoni, y = Abundance, fill = Genus)) + 
-  geom_bar(stat = "identity", aes(fill=Class), position = "fill" ) + 
-  labs(x="pcr_mansoni", y="Relative Abundance%") +
-  facet_wrap(~pcr_mansoni, scales= "free_x", nrow=1) +
-  ggtitle("Taxonomy_GenusLevel") +
-  theme_classic() + 
-  theme(strip.background = element_blank(), 
-        axis.text.x.bottom = element_text(angle = -90))
+
+
+
+
+
+
+
+
