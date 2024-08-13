@@ -18,7 +18,7 @@ taxa.print <- taxa # Removing sequence rownames for display only
 rownames(taxa.print) <- NULL
 head(taxa.print)
 
-saveRDS(taxa, "/home/sukmb626/taxa.rds")
+saveRDS(taxa, "/home/sukmb626/taxa_all.rds")
 
 ##continue with PHYLOSEQ
 
