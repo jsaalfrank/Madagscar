@@ -1,5 +1,10 @@
+#for new sessions#
+
+conda activate 18S_
+
 ##all steps will be performed in R
 R
+
 
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
@@ -22,8 +27,7 @@ if (!requireNamespace("BiocManager", quietly = TRUE))
 BiocManager::install("DESeq2")
 
 #for new sessions#
-conda activate seurat4
-R
+
 
 library(tidyverse) 
 library(phyloseq) 
@@ -32,7 +36,7 @@ library(DESeq2)
 library(dada2)
 library(vegan)
 
-path="/work_beegfs/ikmb_repository/shared/microbiome/rawdata/Johanna/18S_Sequencing_MasterThesis_Johanna_1442/" 
+path="/home/sukmb626/Madagscar/raw_data_18S" 
 # list all files
 fns <- list.files(path)
 
@@ -55,12 +59,10 @@ duplicated(sample.names)
 fnFs_full <- file.path(path, fnFs)
 fnRs_full <- file.path(path, fnRs)
 
-# Quality profiles
-plotQualityProfile(c(fnFs_full[1:2],fnRs_full[1:2]))
+# Quality profiles & #save the Rplots#
+QualityPlot <- plotQualityProfile(c(fnFs_full[1:2],fnRs_full[1:2]))
+pdf("/home/sukmb626/Madagscar/QC/QualityPlot.pdf")
 dev.off()
-
-#save the Rplots#
-#scp sukmb626@medcluster.medfdm.uni-kiel.de:/work_beegfs/sukmb626/Mada/Rplots.pdf \\i-kmb.de\ikmb\Users\j.saalfrank\Downloads
 
 outdir=paste0("data")
 
@@ -68,6 +70,7 @@ outdir=paste0("data")
 filt_path <- file.path(outdir, "filtered") # Place filtered files in filtered/ subdirectory
 filtFs <- file.path(filt_path, paste0(sample.names, "_F_filt.fastq.gz"))
 filtRs <- file.path(filt_path, paste0(sample.names, "_R_filt.fastq.gz"))
+
 
 ### perform the Trimming and Filtering
 duplicated(c(filtFs, filtRs)) #should be false#
@@ -96,6 +99,7 @@ saveRDS(errR, paste0(outdir,"/errors/errR.Rds"))
 
 plotErrors(errR, nominalQ=TRUE)
 #save the plot
+
 png("myplot.png")
 #plot code
 dev.off()
@@ -125,8 +129,8 @@ mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs, justConcatenate = TRUE)
 seqtab <- makeSequenceTable(mergers)
 seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=4, verbose=TRUE)
 
-safeRDS(seqtab.nochim, "/home/sukmb626/seqtab.nochim_18S.rds")
-safeRDS(seqtab, "/home/sukmb626/seqtab.rds")
+saveRDS(seqtab.nochim, "/home/sukmb626/seqtab.nochim_18S_all.rds")
+saveRDS(seqtab, "/home/sukmb626/seqtab_all.rds")
 
 
 
