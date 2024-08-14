@@ -1,0 +1,150 @@
+#DESeq2 mit 16S daten
+
+
+library(tidyverse) # Use of pipe and lots of functions for a better R coding
+library(phyloseq) # Because we are going to work with microbioe data using phyloseq object
+library(vegan) # Many ecology related functions
+library(microbiome) # some useful functions
+library(DESeq2)# Test with negative binomial models
+library(dplyr) 
+library(dada2); packageVersion("dada2")
+library(magrittr)
+library(dplyr)
+library(DESeq2)
+
+
+
+subset_p1 <- subset_samples(GP_mostgenus, pcr_mansoni %in% c("0", "1"))
+subset_p1 <- subset_samples(subset_p1, !is.na(c_b03_age_q))
+
+sample_data(subset_p1)$pcr_mansoni[sample_data(subset_p1)$pcr_mansoni == "0"] <- "negative"
+sample_data(subset_p1)$pcr_mansoni[sample_data(subset_p1)$pcr_mansoni == "1"] <- "positive"
+
+ps.to.dseq <-
+  subset_p1 %>%
+  aggregate_taxa(level = "Genus")
+
+dseq <-
+  ps.to.dseq %>% 
+  phyloseq_to_deseq2 (~ pcr_mansoni + c_b01_csbnom_s + c_b04_sex_d)
+
+
+dseq <-
+  ps.to.dseq %>% 
+  phyloseq_to_deseq2 (~ pcr_mansoni + c_b01_csbnom_s + pcr_mansoni:c_b01_csbnom_s)
+
+estimateSizeFactors(dseq, type = 'poscounts')
+dseq <- estimateSizeFactors(dseq, type = 'poscounts')
+
+
+
+
+# Perform test. There is a lot going under the hood here, including: estimation of size factors, estimation of dispersion, and Negative Binomial GLM fitting and Wald statistics.
+res <-
+  DESeq(dseq)
+
+res %>% colData %>% head()
+
+# Extract the result table
+res.df <-
+  res %>% 
+  results(tidy = T)
+
+#Visualize what we got out of it
+res.df %>% head()
+```
+
+That's it! You can have a look at the res.df table and you will find the results of all the genus tested. Depending on your question, you can perform similar analysis to all levels, from phylum to ASV (subspecies level). 
+
+So, to finish, let's format this table and visualize the data using ggplot2.
+
+```{r}
+# Filter and format to plot
+res.df.to.plot <-
+  res.df %>% 
+  #filter(padj < 0.05) %>% # keep only results with adjusted P value less than 0.05
+  mutate(Genus = row) %>% # Create Genus column
+  left_join(tax_table(ps.to.dseq )@.Data %>% data.frame(), by = "Genus") %>% # Add taxonomy information from the phyloseq object.
+  # Arrange the data for a prettier plot
+  arrange(log2FoldChange) %>% 
+  mutate(Genus = factor(Genus, levels = Genus %>% unique()))
+
+head(res.df.to.plot)
+
+
+#Plot
+
+ggplot(res.df.to.plot, aes(x = log2FoldChange, y = Genus)) +
+  geom_point(aes(col = Genus, size = baseMean))  +
+  geom_text(aes(label = Genus), nudge_x = 0.2, nudge_y = 0.0, size = 3, check_overlap = TRUE) +  # Beschriftungen hinzufügen
+  geom_vline(xintercept = 0) +
+  theme(axis.text.y = element_blank(),  # Remove X-axis text
+        axis.ticks.y = element_blank())+
+  guides(col = guide_legend(reverse = TRUE))
+
+
+
+res.df.to.plot <- res.df %>%
+  mutate(Genus = row) %>%  # Create Genus column
+  left_join(as.data.frame(tax_table(ps.to.dseq)), by = "Genus") %>%  # Add taxonomy information
+  arrange(log2FoldChange) %>% 
+  mutate(Genus = factor(Genus, levels = unique(Genus)),  # Reorder levels of Genus
+         color = ifelse(padj < 0.05, "darkorange", "grey"))  # Conditional coloring based on padj
+
+ggplot(res.df.to.plot, aes(x = log2FoldChange, y = Genus)) +
+  geom_point(aes(col = color, size = baseMean)) + 
+  #geom_text(aes(label = Genus), nudge_x = 0.2, nudge_y = 0.0, size = 3, check_overlap = TRUE) +  # Beschriftungen hinzufügen
+  # Use conditional color
+  geom_vline(xintercept = 0) +
+  theme(axis.text.y = element_blank(),  # Remove Y-axis text
+        axis.ticks.y = element_blank()) +
+  scale_color_identity() +  # Use identity scale for colors
+  guides(col = guide_legend(reverse = TRUE, title = "padj < 0.05"))  # Legend settings
+
+
+
+
+
+ggplot(res.df.to.plot, aes(x = log2FoldChange, y = Genus)) +
+  geom_jitter(aes(col = Genus , "grey"), size = baseMean)) +
+  geom_vline(xintercept = 0) +
+  #scale_color_manual(values = c("grey" = "grey", "red" = "red", unique(res.df.to.plot$Genus))) +
+  theme(axis.text.y = element_blank(),  # Y-Achsentext entfernen
+        axis.ticks.y = element_blank()) +
+  guides(col = guide_legend(title = "Genus"))  # Legenden-Titel festlegen
+
+
+
+ggplot(res.df.to.plot, aes(x = Genus, y = log2FoldChange)) +
+  geom_jitter(aes(col = Genus, size = baseMean))  +
+  geom_vline(xintercept = 0) + 
+  
+  
+  ggplot(res.df.to.plot, aes(x = Genus, y = log2FoldChange, fill = padj)) +
+  geom_col(aes(fill = Genus)) +  # Use geom_col for bar plot
+  geom_vline(xintercept = 0) +
+  theme(axis.text.x = element_blank(),  # Remove X-axis text
+        axis.ticks.x = element_blank())
+
+custom_colors <- c("Schistosoma" = "blue", setNames(colorRampPalette(c("darkgreen", "lightgreen"))(length(unique(res.df.to.plot$Genus))-1), unique(res.df.to.plot$Genus)[unique(res.df.to.plot$Genus) != "Schistosoma"]))
+
+ggplot(res.df.to.plot, aes(x = log2FoldChange, y = Genus, fill = Genus) +
+         geom_col(aes(fill = Genus)) + # Use geom_col for bar plot
+         geom_vline(xintercept = 0) +
+         scale_fill_manual(values = custom_colors) +  # Use custom colors
+         theme(axis.text.y = element_blank(),  # Remove X-axis text
+               axis.ticks.y = element_blank()) +
+         guides(fill = guide_legend(reverse = TRUE))+
+         labs(width = "baseMean")
+       
+       
+       
+       ggplot(res.df.to.plot, aes(x = log2FoldChange, y = Genus)) +
+         geom_jitter(aes(col = Genus, size = baseMean)) +
+         geom_vline(xintercept = 0) +
+         geom_hline(yintercept = 0) +
+         #geom_text(aes(label = custom_labels), hjust = -0.2, vjust = -0.5, size = 3) +  # Add customized labels
+         theme(axis.text.y = element_blank(),  # Remove X-axis text
+               axis.ticks.y = element_blank()) +
+         guides(col = guide_legend(reverse = TRUE))
+
