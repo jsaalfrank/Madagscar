@@ -38,76 +38,98 @@ taxonomy <- taxa
 ##include the metadata of the samples 
 samples <- SCHISDIMA_Metadata_NGS_ID
 
-#the the NGS_ID as the rownames of the samples, so we can do the phyloseq-object generation easily
-row.names(samples) <- samples$NGS_ID
-head(samples)
+library(phyloseq) # Because we are going to work with microbioe data using phyloseq object
+library(vegan) # Many ecology related functions
+library(tidyverse) # Use of pipe and lots of functions for a better R coding
+library(microbiome) # some useful functions
+library(DESeq2)# Test with negative binomial models
+library(dplyr) 
+library(dada2)
+library(magrittr)
+library(dplyr)
+library(readxl)
+library(Biostrings)
+library(ggplot2)
 
-samples <- samples[, -c(2)]
-head(samples)
+
+setwd("~/Desktop/SCHISDIMA/18S_Mada_Germany")
+seqtab<- readRDS("~/Desktop/SCHISDIMA/18S_Mada_Germany/seqtab_all.rds")
+seqtab.nochim <- readRDS("~/Desktop/SCHISDIMA/18S_Mada_Germany/seqtab.nochim_18S_all.rds")
+taxa <- readRDS("~/Desktop/SCHISDIMA/18S_Mada_Germany/taxa_all.rds")
+
+##change seqtab rownames
+current_row_names <- rownames(seqtab.nochim)
+new_row_names <- sub("_F_filt.fastq\\.gz" , "", current_row_names)
+rownames(seqtab.nochim) <- new_row_names
+
+##prepare for phyloseq_object
+micro <- seqtab.nochim
+taxonomy <- taxa 
+
+##include the metadata of the samples 
+Madagascar_Germany_Metadata <- read_excel("Madagascar_Germany_Metadata.xlsx")
+samples <- Madagascar_Germany_Metadata
+rm(Madagascar_Germany_Metadata)
+
+
+
+##remove th e rows/samples, that dont have a id_ngs18S 
+
+samples_cleaned <- samples[!is.na(samples$id_ngs18s), ]
+samples_cleaned <- samples_cleaned[samples_cleaned$id_ngs18s != "", ]
+
+#the the id_ngs18s as the rownames of the samples, so we can do the phyloseq-object generation easily
+
+
+row.names(samples_cleaned) <- samples_cleaned$id_ngs18s
+head(samples_cleaned)
 
 
 ## order the tables, so that NGS ID will fit to each another and we can generate the phyloseq object
 
 ordered_micro <- micro[order(rownames(micro)),]
 
-current_row_names <- rownames(ordered_micro)
-new_row_names <- sub("_F_filt.fastq\\.gz$" , "", current_row_names)
-rownames(ordered_micro) <- new_row_names
+ordered_taxonomy <- taxonomy
+ordered_samples <- samples_cleaned[order(rownames(samples_cleaned)),]
+row.names(ordered_samples) <- ordered_samples$id_ngs18s
 
-
-ordered_taxonomy <- taxonomy[order(rownames(taxonomy)),]
-
-ordered_samples <- samples[order(rownames(samples)),]
-
-
-## put the NTCs and the  Mock communities in an extra table
-
-ID_NTC_Mock <- readRDS("/home/sukmb626/ID_NTC_Mock.rds") 
-head(ID_NTC_Mock)
-ID_NTC_Mock <- NTC_Mock_IDS$ID
-rows_to_remove <- ID_NTC_Mock
-ordered_micro <- ordered_micro[(rownames(ordered_micro) %in% rownames_samples), ]
-ordered_taxonomy <- ordered_taxonomy[!(rownames(ordered_taxonomy) %in% rows_to_remove), ]
 
 
 ## check if the rownames of the different phyoseq-components would be the same
 
-identical(taxa %>% rownames(), micro %>% colnames())
+identical(taxonomy %>% rownames(), micro %>% colnames())
 TRUE? NICE
 
-identical(ordered_micro %>% rownames(), ordered_samples$NGS_ID)
+identical(ordered_micro %>% rownames(), ordered_samples$id_ngs18s)
 FALSE? Shit: 
 
-
-identical(ordered_taxonomy %>% rownames(), ordered_micro %>% colnames())
-
-identical(ordered_micro %>% rownames(), ordered_samples$NGS_ID)
 
 ##if this is not true, remove unidentical rownames 
 
 rownames_micro <- ordered_micro %>% rownames() #get the ronames first
-rownames_samples <- ordered_samples$NGS_ID
+rownames_samples <- ordered_samples$id_ngs18s
 
 unique_to_rownames_micro <- setdiff(rownames_micro , rownames_samples) ##compare the different rownames, and see which are "unique"
 unique_to_rownames_samples <- setdiff(rownames_samples, rownames_micro)
 
-dim(unique_to_rownames_samples)
-dim(unique_to_rownames_micro)
-
+length(unique_to_rownames_samples)
+NULL
+length(unique_to_rownames_micro)
+76
 
 ##if there are unique rownames, remove them! 
 rows_to_remove <- unique_to_rownames_micro 
 ordered_micro <- ordered_micro[!(rownames(ordered_micro) %in% rows_to_remove), ]
 
 
-identical(ordered_micro %>% rownames(), ordered_samples$NGS_ID)
+identical(ordered_micro %>% rownames(), ordered_samples$id_ngs18s)
 
 
 
 ##If all are identical, the Phyloseq object can be generated: 
 
 tax.ps <-
-  tax_table(taxa %>% as.matrix())
+  tax_table(taxonomy %>% as.matrix())
 
 micro.ps <-
   otu_table(ordered_micro, taxa_are_rows = F)
@@ -116,7 +138,7 @@ samples.ps <-
   sample_data(ordered_samples %>% data.frame())
 
 rownames(samples.ps) <-
-  samples.ps %>% pull(NGS_ID)
+  samples.ps %>% pull(id_ngs18s)
 
 ps <-
   phyloseq(tax_table(tax.ps),  
@@ -125,8 +147,7 @@ ps <-
 
 ps
 
-saveRDS(ps, "/home/sukmb626/ps_18S.rds")
-
+saveRDS(ps, "/Users/j.saalfrank/Desktop/SCHISDIMA/18S_Mada_Germany/phloseq_18S_all.rds")
 
 
 ##continue in R studio to generate alpha and beta diversity plots 
