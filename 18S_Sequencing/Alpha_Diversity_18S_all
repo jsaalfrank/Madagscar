@@ -1,0 +1,399 @@
+##Start with the phyloseq-object generated beforehand
+
+library(tidyverse) # Use of pipe and lots of functions for a better R coding
+library(phyloseq) # Because we are going to work with microbioe data using phyloseq object
+library(vegan) # Many ecology related functions
+library(microbiome) # some useful functions
+library(DESeq2)# Test with negative binomial models
+library(dplyr) 
+library(dada2); packageVersion("dada2")
+library(magrittr)
+library(dplyr)
+
+
+##the R-workpackage you need is: "/home/sukmb626/phyloseq.RDataTmp" ; the phyloseq obejct we need is: "/home/submb626/ps_18S.rds"
+
+###generate one subset of NTCs and  one for Moocks to have a look into the seperately 
+
+
+ntcs_mock_18s <- c("24Jul592-DL095", "24Jul592-DL096", "24Jul592-DL191", 
+                   "24Jul592-DL192", "24Jul592-DL287", "24Jul592-DL288", 
+                   "23Nov119-DL096", "23Nov119-DL192", "23Nov119-DL208", 
+                   "23Nov119-DL088", "23Nov119-DL184", "23Nov119-DL200", "24Jul592-DL382", 
+                   "24Jul592-DL383", "24Jul592-DL384")
+
+
+ps_ntc_mock <- subset_samples(ps, id_ngs18s %in% ntcs_mock_18s)
+
+##remove them from the original phyloseq object
+
+ps_withoutntcs <- subset_samples(ps, !(id_ngs18s %in% ntcs_mock_18s))
+
+
+
+summary(sample_sums(ps_withoutntcs))
+
+##MMin. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##0    5648    9403   12018   14442  104866 
+
+#Since we are interested in alpha diversity, it is probably not a bad idea to prune OTUs that are not present in any of the samples 
+#(for some reason there are a few in "ps") – BUT DON’T TRIM MORE THAN THAT! I know it is tempting to trim noise right away, 
+#but many richness estimates are modeled on singletons and doubletons in the abundance data. You need to leave them in the dataset if you 
+#want a meaningful estimate.
+pruned <-prune_taxa(taxa_sums(ps_withoutntcs) > 0, ps_withoutntcs)
+taxa_sums(pruned)
+summary(taxa_sums(pruned))
+
+##   Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+##1.0      8.0     23.0    269.8     57.0 170252.0.0 
+
+
+# cut out also the samples that are zero
+
+summary(sample_sums(pruned))
+##MMin. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##00    5648    9403   12018   14442  104866 
+
+pruned <-prune_samples(sample_sums(pruned) > 0, pruned)
+summary(sample_sums(pruned))
+##MMin. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##1    5666    9459   12052   14464  104866 
+
+
+#see the counts of your 18S read
+counts <-
+  pruned %>% 
+  otu_table() %>%
+  data.frame() %>% 
+  rowSums()
+counts
+
+
+
+#To have it a bit nicer, let's use pipes and ggplot2 to visualize this
+
+
+to.plot <-
+  counts %>% 
+  data.frame(counts = ., Sample = names(.))
+
+## this is plotting the reads 
+ggplot(to.plot, aes(x = Sample, y = counts)) +
+  geom_col() +
+  geom_hline(yintercept = 1000) + # add horizontal line 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+get_taxa_unique(pruned, "Domain")
+[1] "Bacteria"       "Eukaryota"      "Archaea"        NA               "Eukaryota:plas" "Eukaryota:mito" "Eukaryota:nucl"
+
+##keep only Eukaryota for now
+
+eukaryotes_pruned = subset_taxa(pruned, Domain %in% c("Eukaryota", "Eukaryota:plas", "Eukaryota:mito", "Eukaryota:nucl"))
+
+##also remove the plants to remove the diet things (remember the levels in PR2 "Supergroup","Division","Subdevision", "Class","Order","Family","Genus","Species"))
+
+get_taxa_unique(eukaryotes_pruned, "Supergroup")
+[1] "Obazoa"         "TSAR"           NA               "Archaeplastida" "Excavata"       "Amoebozoa"      "Haptista"       "Cryptista"      "Eukaryota_X"   
+
+get_taxa_unique(eukaryotes_pruned, "Division")
+[1] "Opisthokonta"       "Stramenopiles"      NA                   "Streptophyta"       "Rhizaria"           "Metamonada"        
+[7] "Evosea"             "Alveolata"          "Haptophyta"         "Chlorophyta"        "Discoba"            "Chlorophyta:plas"  
+[13] "Cryptophyta"        "Kathablepharidacea" "Prasinodermophyta"  "Streptophyta:plas"  "Ancyromonadida"     "Discosea"          
+[19] "Picozoa"            "Telonemia"          "Rhodophyta"         "Centroplasthelida"  "Tubulinea"          "Streptophyta:mito" 
+[25] "Cryptophyta:nucl"   "Stramenopiles:mito"
+## lets remove all the plants and algae
+
+"Stramenopiles", "Streptophyta", "Haptophyta", "Chlorophyta", "Chlorophyta:plas",  "Cryptophyta", "Prasinodermophyta", "Streptophyta:plas"  "Ancyromonadida", "Rhodophyta","Streptophyta:mito", "Cryptophyta:nucl" ,"Stramenopiles:mito")
+
+Opisthokonta, Rhizaria, Metamonada, Evosea, Alveolata, Discoba, Kathablepharidacea, Ancyromonadida, Discosea, Picozoa, Telonemia, Centroplasthelida, Tubulinea
+
+pruned_noplants = subset_taxa(eukaryotes_pruned, !(Division %in% c("Stramenopiles", "Streptophyta", "Haptophyta", "Chlorophyta", "Chlorophyta:plas",  "Cryptophyta", "Prasinodermophyta", "Streptophyta:plas", "Rhodophyta","Streptophyta:mito", "Cryptophyta:nucl" ,"Stramenopiles:mito")))
+
+
+get_taxa_unique(pruned_noplants, "Division")
+
+[1] "Opisthokonta"        NA                   "Rhizaria"           "Metamonada"         "Evosea"             "Alveolata"          "Discoba"            "Kathablepharidacea" "Ancyromonadida"     "Discosea"          
+[12] "Picozoa"            "Telonemia"          "Centroplasthelida"  "Tubulinea"    
+
+##ensure all things have at least 1000 reads
+
+
+pruned_even_depth <- rarefy_even_depth(pruned_noplants, sample.size = 1000)
+
+pruned_digenea = subset_taxa(pruned_even_depth , Family %in% c("Digenea"))
+
+get_taxa_unique(pruned_digenea, "Genus")
+
+
+#Analyse things with Helmin ths7Parasites
+
+
+pruned_parasites_helminths = subset_taxa(pruned_even_depth , Genus %in% c("Schistosoma", "Strongyloides", "Trichuris", "Ostertagia", "Ascaris", "Enterobius", "Necator"))
+
+
+
+##get the samples, that are positive for Schistosoma
+get_taxa_unique(pruned_parasites_helminths, "Species")
+pruned_kiel_schisto = subset_taxa(pruned_kiel , Genus %in% c("Schistosoma"))
+otu_df <- otu_table(pruned_kiel_schisto ) %>%
+  data.frame()
+samples_with_all_zeros <- which(rowSums(otu_df) == 0)
+length(samples_with_all_zeros)
+[1] 1239
+
+samples_without_zeros <- which(rowSums(otu_df) != 0)
+length(samples_without_zeros)
+
+
+
+###ALPHA DIVERSITY
+
+### Visualization ##does'nt work with the Fisher's thingy
+
+richness <- estimate_richness(pruned_noplants , measures = c("Observed", "Chao1", "ACE", "Shannon"))
+
+plot_richness(pruned_noplants, x="location",col="sex", measures = c("Observed", "Chao1", "ACE", "Shannon"))
+
+##ensure all things have at least 1000 reads
+
+pruned_even_depth <- rarefy_even_depth(pruned_noplants, sample.size = 1000)
+
+
+get_taxa_unique(pruned_even_depth, "Species")
+
+get_taxa_unique(pruned_even_depth, "Family")
+
+get_taxa_unique(pruned_even_depth, "Order")
+
+get_taxa_unique(eukaryotes_pruned, "Family")
+
+#... there iS schisto in there
+
+schistosoma_population <- subset_taxa(pruned_even_depth, Species == "Schistosoma_mansoni")
+
+get_taxa_unique(schistosoma_population, "Species")
+
+otu_df <- otu_table(schistosoma_population) %>%
+  data.frame()
+samples_with_all_zeros <- which(rowSums(otu_df) == 0)
+length(samples_with_all_zeros)
+[1] 1239
+
+samples_without_zeros <- which(rowSums(otu_df) != 0)
+length(samples_without_zeros)
+[1] 152
+
+##Ok, lets dive from Dignea da rein 
+
+
+
+##Fuck it  - wieviel Blastocystis ist drin? 
+get_taxa_unique(pruned_even_depth , "Family")
+"Blastocystis-Group"
+
+blastocystis_population <- subset_taxa(eukaryotes_pruned,  Family == "Blastocystis-Group")
+get_taxa_unique(blastocystis_population, "Species")
+
+
+blastocystis_homini_population <- subset_taxa(eukaryotes_pruned,  Species == "Blastocystis_hominis")
+get_taxa_unique(blastocystis_homini_population, "Species")
+
+otu_df <- otu_table(blastocystis_population) %>%
+  data.frame()
+samples_with_all_zeros <- which(rowSums(otu_df) == 0)
+length(samples_with_all_zeros)
+#448
+
+
+otu_df <- otu_table(blastocystis_homini_population) %>%
+  +     data.frame()
+  samples_with_all_zeros <- which(rowSums(otu_df) == 0)
+length(samples_with_all_zeros)
+#708
+samples_without_zeros <- which(rowSums(otu_df) != 0)
+length(samples_without_zeros)
+#683
+
+samples_blastocystis_homini <- rownames(otu_df)[samples_without_zeros]
+print(samples_blastocystis_homini)
+
+samples_blastocystis_homini_df <- data.frame(Sample = samples_blastocystis_homini, stringsAsFactors = FALSE)
+
+# Write the data frame to an Excel file
+write_xlsx(samples_blastocystis_homini_df, path = "samples_blastocystis_homini.xlsx")
+
+samples_without_zeros <- which(rowSums(otu_df) != 0)
+length(samples_without_zeros)
+#943
+
+blastocystis_population <- subset_taxa(eukaryotes_pruned,  Species == "Blastocystis_ratti")
+
+pruned_parasites_helminths
+
+rich.CHAO1 <- # create a rich datafram, ways easier to plot
+  pruned_even_depth %>%
+  estimate_richness(measures = "Chao1") %>% # get alpha diversity
+  rownames_to_column("pid")
+rich.Shannon <- # create a rich datafram, ways easier to plot
+  pruned_even_depth %>%
+  estimate_richness(measures = "Shannon") %>% # get alpha diversity
+  rownames_to_column("pid")
+
+rich.observed<- # create a rich datafram, ways easier to plot
+  pruned_even_depth %>%
+  estimate_richness(measures = "Observed") %>% # get alpha diversity
+  rownames_to_column("pid")
+Alpha.Diversity <- cbind(sample_data(pruned_even_depth), rich.Shannon, rich.CHAO1, rich.observed)
+
+
+
+##übertrieben nervig, aber "Alpha.Diversity" heißt der dataframe in dem Alpha-Diversity niedergeschrieben ist. 
+##remove pid.1 & pid.2 spalten 
+##plot Shannon und Chao diversity für "pcr_mansoni2 und location " 
+
+
+Alpha.Diversity$location[Alpha.Diversity$location == "TO_Tsiroanomandidy"] <- "Tsiroanomandidy"
+Alpha.Diversity$location[Alpha.Diversity$location == "Kiel"] <- "Kiel"
+Alpha.Diversity$location[Alpha.Diversity$location == "FA_Andina"] <- "Andina"
+Alpha.Diversity$location[Alpha.Diversity$location == "MA_Mahajanga_Ankazomborona"] <- "Mahajanga"
+
+Alpha.Diversity$location <- factor(Alpha.Diversity$location,  levels = c( "Andina", "Tsiroanomandidy", "Mahajanga", "Kiel"))
+
+ggplot(Alpha.Diversity, aes(x = location, y = Shannon)) +
+  geom_jitter(aes(color = factor(location)), width = 0.3, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  #ggtitle("AlphaDiversity_pcr_mansoni_18S")+
+  scale_color_manual(values = c("Mahajanga" = "#D81B60","Andina" = "#1E88E5", "Kiel" = "#FFC107", "Tsiroanomandidy" = "#004D40"),
+    name = "Location")+
+  labs(x = "Location", y = "Shannon") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  )
+
+
+ggplot(Alpha.Diversity, aes(x = location, y = Chao1)) +
+  geom_jitter(aes(color = factor(location)), width = 0.3, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  #ggtitle("AlphaDiversity_pcr_mansoni_18S")+
+  scale_color_manual(values = c("Mahajanga" = "#D81B60","Andina" = "#1E88E5", "Kiel" = "#FFC107", "Tsiroanomandidy" = "#004D40"),
+                     name = "Location")+
+  labs(x = "Location", y = "Chao1") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  )
+
+ggplot(Alpha.Diversity, aes(x = location, y = Observed)) +
+  geom_jitter(aes(color = factor(location)), width = 0.3, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  #ggtitle("AlphaDiversity_pcr_mansoni_18S")+
+  scale_color_manual(values = c("Mahajanga" = "#D81B60","Andina" = "#1E88E5", "Kiel" = "#FFC107", "Tsiroanomandidy" = "#004D40"),
+                     name = "Location")+
+  labs(x = "Location", y = "Observed") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  )
+
+
+
+##Statistics Location
+
+subset <- subset(Alpha.Diversity, location %in% c("Kiel", "Tsiroanomandidy"))
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Chao1 ~ location, data = .)
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Shannon ~ location, data = .)
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Observed ~ location, data = .)
+
+
+##Gender
+
+ggplot(Alpha.Diversity, aes(x = sex, y = Chao1)) +
+  geom_jitter(aes(color = factor(sex)), width = 0.3, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = sex), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  #ggtitle("AlphaDiversity_pcr_mansoni_18S")+
+  scale_color_manual(values = c("female" = "#E66100","male" = "#5D3A9B"),
+                     name = "Sex")+
+  labs(x = "Sex", y = "Chao1") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  )
+
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Chao1 ~ sex, data = .)
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Shannon ~ sex, data = .)
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Observed ~ sex, data = .)
+
+
+
+##pcr_mansoni
+
+Alpha.Diversity$pcr_haematobium [Alpha.Diversity$pcr_haematobium == "1"] <- "infected"
+Alpha.Diversity$pcr_haematobium [Alpha.Diversity$pcr_haematobium  == "0"] <- "non-infected"
+
+ggplot(Alpha.Diversity, aes(x = pcr_haematobium , y = Shannon)) +
+  geom_jitter(aes(color = factor(pcr_haematobium )), width = 0.3, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = pcr_haematobium ), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  #ggtitle("AlphaDiversity_pcr_mansoni_18S")+
+  scale_color_manual(values = c("non-infected" = "#4B0092","infected" = "#1AFF1A"),
+                     name = "S. haematobium Infection")+
+  labs(x = "S. haematobium Infection", y = "Shannon") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  )
+
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Chao1 ~ pcr_haematobium, data = .)
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Shannon ~ pcr_haematobium, data = .)
+
+subset %>% 
+  arrange(subset) %>% 
+  wilcox.test(Observed ~ pcr_haematobium, data = .)
