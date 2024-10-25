@@ -2,16 +2,18 @@
 DADA2 Pipeline for 16S Sequencing Reads
 author: Johanna Saalfrank 
 
+---------------------------------------
 
 
 
 ##Start in Terminal 
-conda activate 18S_Mada...something---
-
-
+conda activate 18S_PR2_Madagascar
 #all steps will be conducted in R 
 
 R
+R version 4.3.1 (2023-06-16)
+
+
 
 
 #install packages and load libraries 
@@ -38,6 +40,7 @@ BiocManager::install("DESeq2")
 
 #for new sessions#
 
+```{r}
 
 library(tidyverse) 
 library(phyloseq) 
@@ -47,202 +50,95 @@ library(dada2)
 library(vegan)
 library(readxl)
 
+```
 
-#set paths where to store/get your data from 
+as there was a big big mess and everything took forever, I will just combine now the different seqtab.nochim tabels to one bis table
 
-path_reads <- "/work_beegfs/sukmb626/rawdata/16S_Raw_Reads"       #where the raw reads are stored
-path_taxonomy <- "home/sukmb626/Madagscar/16S/tax_assign"         #where the tax_assign table is stored
-path_table <- "/home/sukmb626/Madagscar/16S/tables"               #where the assign_tables are stored
-path_wd <- "/work_beegfs/sukmb626/16S_Madagascar_Deutschland"     #this is the working directory for later (!) 
+first load all "nochim"tables into the R environment 
+
+seqtab.nochim.kiel <- readRDS("/work_beegfs/sukmb626/16S_Madagascar_Deutschland/data/24Aug8613/seqtab_nochim.Rds")
+seqtab.nochim.mahajanga <- readRDS("/work_beegfs/sukmb626/16S_Madagascar_Deutschland/data/23Nov120/seqtab_nochim.Rds")
+seqtab.nochim.andina <- readRDS("/work_beegfs/sukmb626/16S_Madagascar_Deutschland/data/22Dez832/seqtab_nochim.Rds")
+seqtab.nochim.andina2 <- readRDS("/work_beegfs/sukmb626/16S_Madagascar_Deutschland/data/22Dez831/seqtab_nochim.Rds")
+seqtab.nochim.andina3 <- readRDS("/work_beegfs/sukmb626/16S_Madagascar_Deutschland/data/22Dez830/seqtab_nochim.Rds")
+
+
+#combine these seqtab.nochim tables: 
+
+merged_seqtab <- mergeSequenceTables(seqtab.nochim.kiel, seqtab.nochim.mahajanga, seqtab.nochim.andina,seqtab.nochim.andina2, seqtab.nochim.andina3, orderBy = "abundance")
+
+dim(merged_seqtab) 
+[1]   1485 159840
+
+# Check for any NA values
+anyNA(merged_seqtab)
+[1]  FALSE 
+
+## taxonomic annotation to RDP16 Dataset 
+
+taxa <- data.frame(assignTaxonomy(merged_seqtab, "/work_beegfs/sukmb626/16S_Madagascar_Deutschland/rdp_train_set_16.fa.gz", multithread=4))                                      
+
+saveRDS(taxa,"/work_beegfs/sukmb626/16S_Madagascar_Deutschland/tax_assign_ASV_Bayes_16RDP.rds")
+
+##seems as it worked
+#now continue building the phyloseqobject 
+
+path_reads <- "/work_beegfs/sukmb626/rawdata/16S_Raw_Reads"                            #where the raw reads are stored
+path_taxonomy <- "/work_beegfs/sukmb626/16S_Madagascar_Deutschland/tax_assign"         #where the tax_assign table is stored
+path_table <- "/work_beegfs/sukmb626/16S_Madagascar_Deutschland/tables"                #where the assign_tables are stored
+path_wd <- "/work_beegfs/sukmb626/16S_Madagascar_Deutschland"                          #this is the working directory for later (!) 
 
 setwd(path_wd)
-
-# list all files
-fns <- list.files(path_reads)
-
-# keep only FastQ files
-fastqs <- fns[grepl(".fastq.gz$", fns)]
-fastqs <- sort(fastqs) # Sort ensures forward/reverse reads are in same order
-
-# make sure that R1 is for forward read and R2 for reverse
-
-fnFs <- fastqs[grepl("R1_001.fastq.gz", fastqs)] ## Just the forward read files
-fnRs <- fastqs[grepl("R2_001.fastq.gz", fastqs)] ## Just the reverse read files
-
-# Sample names are derived from the filenames
-sample.names <- sapply(strsplit(fnFs, "_"), `[`, 2)
-cat(paste0("Starting processing for ",length(sample.names)," samples\n"))
-duplicated(sample.names)
-
-## Fully specify the path for the fnFs and fnRs
-fnFs_full <- file.path(path_reads, fnFs)
-fnRs_full <- file.path(path_reads, fnRs)
-
-# Quality profiles & #save the Rplots#
-QualityPlot <- plotQualityProfile(c(fnFs_full[1:2],fnRs_full[1:2]))
-pdf("/home/sukmb626/Madagscar/16S/QualityPlot.pdf")
-dev.off()
-
-setwd("/work_beegfs/sukmb626/16S_Madagascar_Deutschland")
-
-outdir <- paste0("data")
-
-#create folders for intermediate files
-filt_path <- file.path(outdir, "filtered") # Place filtered files in filtered/ subdirectory
-filtFs <- file.path(filt_path, paste0(sample.names, "_F_filt.fastq.gz"))
-filtRs <- file.path(filt_path, paste0(sample.names, "_R_filt.fastq.gz"))
-
-#perform the Trimming and Filtering
-duplicated(c(filtFs, filtRs)) #should be false#
-out <- filterAndTrim(fnFs_full, filtFs, fnRs_full, filtRs, truncLen=c(250,210),trimLeft=c(5, 5), maxN=0, maxEE=c(2,2), truncQ=5, rm.phix=TRUE, compress=TRUE, multithread=4
-
-dim (out)    
-                           
-#Check reads after trimming                                         
-plotQualityProfile(c(filtFs[1:2], fnFs_full[1:2]))
-plotQualityProfile(c(filtRs[1:2], fnRs_full[1:2]))
-                     
-#create output directory
-dir.create(paste0(outdir,"/errors"),recursive=T,showWarnings=F)
-#Learn forward error rates
-errF <- learnErrors(filtFs, nbases=100000000, multithread=4)
-saveRDS(errF, paste0(outdir,"/errors/errF.Rds"))
-
-#Learn reverse error rates
-errR <- learnErrors(filtRs, nbases=100000000, multithread=4)
-saveRDS(errR, paste0(outdir,"/errors/errR.Rds"))
-
-plotErrors(errR, nominalQ=TRUE)
-
-#save the plot
-png("myplot.png")
-#plot code
-dev.off()
-
-# Dereplication
-filtFs <- filtFs[file.exists(filtFs)]
-filtRs <- filtRs[file.exists(filtRs)]
-    
-derepFs <- derepFastq(filtFs, verbose=FALSE)
-derepRs <- derepFastq(filtRs, verbose=FALSE) 
- 
-# Sequence inference
-dadaFs <- dada(derepFs, err=errF, multithread=4)
-dadaRs <- dada(derepRs, err=errR, multithread=4)  
-
-#when the vectors of sample name and dadaFs are nor equal#
-#sample.names <- sapply(strsplit(basename(filtFs), "_"), `[`, 1)
-
-## Sequence inference
-#dadaFs <- dada(derepFs, err=errF, multithread=4)
-##dadaRs <- dada(derepRs, err=errR, multithread=4)
-
-## Sequence merging
-mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs, justConcatenate = TRUE)
-
-# Chimera identification
-seqtab <- makeSequenceTable(mergers)
-seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=4, verbose=TRUE)
-
-saveRDS(seqtab.nochim, "/home/sukmb626/seqtab.nochim_18S_all.rds")
-saveRDS(seqtab, "/home/sukmb626/seqtab_all.rds")
-
-
-
-
-#check the dim of the files
-
-dim (out1)
-dim (dadaFs)
-dim (mergers)
-dim (seqtab)
-dim (seqtab.nochim)
-length (sample.names)
-
-
-
-
-
-
-
-
-
 
 
 ##samples information & metadata
 samples <- read_excel("Madagascar_Germany_Metadata.xlsx")
 samples_cleaned <- samples %>% filter(!is.na(id_ngs16S))
 
-row.names(samples) <- samples$id_ngs16S
+dim(samples_cleaned)
+[1] 1430   51
 
-samples <- samples[, -c(3)]
-ordered_samples <- samples[order(rownames(samples)),]
+row.names(samples_cleaned) <- samples_cleaned$id_ngs16S
+ordered_samples <- samples[order(rownames(samples_cleaned)),]
 
 ##microbiome information
-micro <- readRDS(paste0("seqtab_nochim.Rds"))
+micro <- merged_seqtab
 
 ##tax infromation
 setwd(path_taxonomy)
-tax <- read.delim(paste0("taxa_Bayesian_RDP16_SV.tsv"),sep = " ")
-setwd(path)
+tax <- taxa
 
-setwd(path_table)
-taxonomy <- read.delim(paste0("Table_ASV_Bayesian_RDP16.tsv"), sep = "\t") 
-setwd(path)
+
 
 ## order the tables, so that NGS ID will fit to each another
 
+identical(tax %>% rownames(), micro %>% colnames())
+TRUE
+
+identical(micro %>% rownames(), samples_cleaned$id_ngs16S)
+FALSE
+ordered_samples <- samples_cleaned[order(samples_cleaned$id_ngs16S),]
 ordered_micro <- micro[order(rownames(micro)),]
-ordered_taxonomy <- taxonomy[order(rownames(taxonomy)),]
 
-##put the NTCs and the  Mock communities in an extra table
+identical(ordered_micro %>% rownames(), ordered_samples$id_ngs16S)
+FALSE
 
-ID_NTC_Mock <- NTC_Mock_IDS$ID
-rows_to_remove <- ID_NTC_Mock
-ordered_micro <- ordered_micro[!(rownames(ordered_micro) %in% rows_to_remove), ]
-ordered_samples <- ordered_samples[!(rownames(ordered_samples) %in% rows_to_remove), ]
-ordered_taxonomy <- ordered_taxonomy[!(rownames(ordered_taxonomy) %in% rows_to_remove), ]
-
-##remove the samples, where no PCR was performed: 
-
-NO_PCR_Performed <- No_PCR_Performed$no_PCR
-rows_to_remove <- NO_PCR_Performed
-ordered_micro <- ordered_micro[!(rownames(ordered_micro) %in% rows_to_remove), ]
-ordered_samples <- ordered_samples[!(rownames(ordered_samples) %in% rows_to_remove), ]
-ordered_taxonomy <- ordered_taxonomy[!(rownames(ordered_taxonomy) %in% rows_to_remove), ]
-
-
-## check if the rownames of the different phyoseq-components would be the same
-
-identical(tax %>% rownames(), ordered_micro %>% colnames())
-
-identical(ordered_micro %>% rownames(), ordered_samples$NGS_ID)
-
-##iif this is not true, remove unidentical rownames 
 
 rownames_micro <- ordered_micro %>% rownames()
-rownames_samples <- ordered_samples$NGS_ID
+rownames_sample <- ordered_samples$id_ngs16S
 
-unique_to_rownames_micro <- setdiff(rownames_micro , rownames_samples)
-unique_to_rownames_samples <- setdiff(rownames_samples, rownames_micro)
+unique_to_rownames_micro <- setdiff(rownames_micro , rownames_sample)
+unique_to_rownames_sample <- setdiff(rownames_sample , rownames_micro)
 
-##just in the micro_samples are 20 rows, that are not defined in the Metadata. Time to remove them. 
+rows_to_remove <- unique_to_rownames_micro
 
-rows_to_remove <- unique_to_rownames_micro 
 ordered_micro <- ordered_micro[!(rownames(ordered_micro) %in% rows_to_remove), ]
 
-##check again, if now we have the same data: 
-identical(ordered_micro %>% rownames(), ordered_samples$NGS_ID)
+identical(ordered_micro %>% rownames(), ordered_samples$id_ngs16S)
+TRUE
 
-###also remove these date from the taxonomy table
-rownames_taxonomy <- ordered_taxonomy %>% rownames()
-
-unique_to_rownames_micro <- setdiff(rownames_micro  , rownames_taxonomy )
-unique_to_rownames_taxonomy <- setdiff(rownames_taxonomy, rownames_micro )
-rows_to_remove <- unique_to_rownames_taxonomy
-ordered_taxonomy <- ordered_taxonomy[!(rownames(ordered_taxonomy) %in% rows_to_remove), ]
-
-
+identical(tax %>% rownames(), ordered_micro %>% colnames())
+TRUE
 
 ##if this is true, lets create a phyloseq object! 
 tax.ps <-
@@ -251,14 +147,11 @@ tax.ps <-
 micro.ps <-
   otu_table(ordered_micro, taxa_are_rows = F)
 
-rownames(ordered_samples) <-
-  ordered_samples %>% pull(NGS_ID)
-
 samples.ps <-
   sample_data(ordered_samples %>% data.frame())
 
 rownames(samples.ps) <-
-  samples.ps %>% pull(NGS_ID)
+  samples.ps %>% pull(id_ngs16S)
 
 ps <-
   phyloseq(tax_table(tax.ps),  
@@ -266,3 +159,7 @@ ps <-
            sample_data(samples.ps))
 
 ps
+
+saveRDS(ps, "/work_beegfs/sukmb626/16S_Madagascar_Deutschland/phyloseq_16S_all.rds")
+
+
