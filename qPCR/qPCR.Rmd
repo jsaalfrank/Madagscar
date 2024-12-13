@@ -1,1 +1,121 @@
+---
+title: "qPCR_Analysis"
+author: "Johanna Saalfrank"
+date: "2024-12-11"
+output: html_document
+---
 
+## Overview
+
+qPCR Analysis of Kiel and Mahajanga samples was performed. 
+R Studio is used to generate the concentration plot. 
+The concentration was calculated by using the standard curve from the run performed on 9.Dec.2024. 
+The concentration is measured in pg. 
+
+Following libraries will be used:
+
+```{r}
+library(readxl)
+library(ggplot2)
+library(ggpubr)
+```
+Load the excel-table including the S.cere concentrations for all samples, remove two with a faulty concentration of very hight values (S-0150-K0 and S-0029-K0) 
+```{r}
+
+qPCR_Analysis <- read_excel("Desktop/qPCR Analysis.xlsx", + sheet = "combined")
+
+#remove the outlayers
+qPCR_Analysis_filtered <- qPCR_Analysis[qPCR_Analysis$Sample_name != "S-0150-K0", ]
+qPCR_Analysis_filtered <- qPCR_Analysis_filtered[qPCR_Analysis_filtered$Sample_name != "S-0029-K0", ]
+
+```
+
+Plotting a boxplot, grouped by location of samples and showing the concentration of S. cere in fecal DNA, measured in pg. 
+
+```{r}
+
+ggplot(qPCR_Analysis_filtered, aes(x = location, y = `conc in pg`)) +
+    geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2, outlier.shape = NA) +
+    geom_jitter(aes(color = location), width = 0.3, height = 0, alpha = 0.3, size = 2) +   # Jitter for points colored by location
+    stat_summary(
+        fun = median, 
+        geom = "point", 
+        shape = 18, 
+        size = 3, 
+        color = "black"
+    ) +      # median as a point
+    stat_summary(
+        fun = median,
+        geom = "text",
+        aes(label = sprintf("%.3f", ..y..)),
+        vjust = -0.5,
+        color = "black",
+        size = 4
+    ) +     # median value as text 
+    stat_compare_means(
+        method = "wilcox.test",                         # Wilcoxon test for medians
+        label = "p.format",                             # Display p-value in a formatted style
+        comparisons = list(c("germany", "madagascar")), # Compare these two groups
+        label.y = 0.18                                  # Position of the p-value label on the y-axis
+    ) +     # lables of the plot 
+    labs(
+        title = "Concentrations of Saccharomyces by Location",
+        x = "Location",
+        y = "Concentration of S.cere. (pg)",
+        color = "Location" 
+    ) +
+    scale_y_continuous(limits = c(0, 1), oob = scales::squish)+ # accumulate the "higher" valued on the upper limit of the plot and set the limits of the plot 
+    scale_color_manual(                                         # set the colors for the jitter points 
+        values = c(
+            "germany" = "#FFC107",
+            "madagascar" = "#004D40"
+        )
+    ) +
+    theme(                                                      # Make the plot pretty overall 
+        panel.grid = element_blank(),
+        panel.background = element_rect(fill = "white", color = NA),
+        legend.position = "right",
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10),
+        axis.text = element_text(size = 14),
+        axis.title = element_text(size = 16, face = "bold")
+    )
+
+```
+
+This could be a add on to show how the distribution looks like. Bins are formed in here. First the concentration- results are binned 
+in different values and in the second step a barplot is generated to compare the bins. 
+```{r}
+qPCR_Analysis_filtered$bins <- cut(                  #add a new column called bins
+    qPCR_Analysis_filtered$`conc in pg`,             #add according to the value in `conc in pg` a label 
+    breaks = c(0, 0.01, 0.02, 0.03, 0.04, 0.05, Inf),
+    labels = c("0-0.01", "0.01-0.02", "0.02-0.03", "0.03-0.04", "0.04-0.05", ">0.05"),
+    include.lowest = TRUE
+)
+
+#create a barplot 
+
+ggplot(qPCR_Analysis_filtered, aes(x = bins, fill = location)) +
+    geom_bar(position = "dodge", color = "black", size = 0.5) + # barplot with sperated bars per location
+    labs(
+        title = "Distribution of Saccharomyces Concentrations by Location",
+        x = "Concentration Range (pg)",
+        y = "Number of Samples",
+        fill = "Location"
+    ) +
+    scale_fill_manual(                              # set the colors for the bars
+        values = c(
+            "germany" = "#FFC107",
+            "madagascar" = "#004D40"
+        )
+    ) +
+    theme_minimal() +                            # Make the plot pretty overall 
+    theme(
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14, face = "bold"),
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10)
+    )
+
+
+```
