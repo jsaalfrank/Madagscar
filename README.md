@@ -1,14 +1,8 @@
-# Docu-Template
+# Analysis of the eukaryotic and bacterial human fecal microbiota from Madagascar
 
-This is a demo repo as an example for how scientific documentation in data science projects can function. To use this as a template for your data science project, select "Use this template" and open your repo. To remove all demo content from the repo, run `./initialize.sh` in your new repo's main folder.
+Within this project samples were collected within the SCHISDIMA study, performed by Labgroup Fusco at Bernhard-Nocht-Institute for Tropical Medicine in Hamburg. 
+The extracted DNA of the Malagasy samples were supplemented by samples from a Kiel-based cohort. 18S rDNA VXVX amplicon sequencing as well as 16S V3V4 amplicon sequencing was performed on all samples. 
 
-## Layout description
-
-The repo has three main areas:
-
-* Main directory
-* Researchers' notebooks
-* Subdirectories of each independent analysis step
 
 ## Main directory
 
@@ -16,15 +10,18 @@ Latest when external collaborators join the project or it is to be published, th
 
 ### Readme.md
 
-The Readme.md includes a description of the project and points at the points where to get started, if this is the first contact with the repo:
+Within this project samples were collected within the SCHISDIMA study, performed by Labgroup Fusco at Bernhard-Nocht-Institute for Tropical Medicine in Hamburg. 
+The extracted DNA of the Malagasy samples were supplemented by samples from a Kiel-based cohort. 18S rDNA VXVX amplicon sequencing as well as 16S V3V4 amplicon sequencing was performed on all samples. 
+All bioinformatical steps, that have been conducted will be noted down in here: 
 
 * 00\_Files.md, 01_Background.md
 * Notebooks
 * Analysis directories
-* Analysis flowchart?
+* ANALYSIS FLOWCHART (todo)
 * For publication, an as-short-as-possible but complete step by step guide to reproduce the results.
 
 ### 00_Files.md
+
 
 This describes all files of importance for this project, namely:
 
