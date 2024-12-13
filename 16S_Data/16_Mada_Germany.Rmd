@@ -1,1 +1,1263 @@
+---
+title: "16S_Mada_Germany"
+format: html
+editor: Johanna Saalfrank 
+last date: 13 12 2024
+---
+# 16S Analysis of Madagascar and Germany Samples
+
+Alpha-Diversity, Beta-Diversity and Taxonomy Analysis of 16S V3V4 rDNA Amplicon Sequencing Reads. 
+
+##Seqtab.nochim Generation
+
+The raw reads coming from the Sequencing are downloaded and will be trimmed, filtered and QCs using DADA2
+
+the following libraries will be used in the seqtab.nochim generation: 
+
+```{r}
+
+library(tidyverse) 
+library(phyloseq) 
+library(microbiome)
+library(DESeq2)
+library(dada2)
+library(vegan)
+library(readxl)
+
+```
+
+#set paths where to store/get your data from 
+
+``{r}
+path_reads <- "/work_beegfs/sukmb626/rawdata/16S_Raw_Reads"       #where the raw reads are stored
+path_taxonomy <- "home/sukmb626/Madagscar/16S/tax_assign"         #where the tax_assign table is stored
+path_table <- "/home/sukmb626/Madagscar/16S/tables"               #where the assign_tables are stored
+path_wd <- "/work_beegfs/sukmb626/16S_Madagascar_Deutschland"     #this is the working directory for later (!) 
+
+```
+Load, filter, trim and merge the reads
+
+```{r}
+
+fns <- list.files(path_reads)            # list all files
+
+fastqs <- fns[grepl(".fastq.gz$", fns)]  # keep only FastQ files
+fastqs <- sort(fastqs)                   # Sort ensures forward/reverse reads are in same order
+
+                                         # make sure that R1 is for forward read and R2 for reverse
+
+fnFs <- fastqs[grepl("R1_001.fastq.gz", fastqs)] ## Just the forward read files
+fnRs <- fastqs[grepl("R2_001.fastq.gz", fastqs)] ## Just the reverse read files
+
+sample.names <- sapply(strsplit(fnFs, "_"), `[`, 2)   # Sample names are derived from the filenames  
+cat(paste0("Starting processing for ",length(sample.names)," samples\n"))
+duplicated(sample.names)
+
+fnFs_full <- file.path(path_reads, fnFs)  ## Fully specify the path for the fnFs 
+fnRs_full <- file.path(path_reads, fnRs)  ## Fully specify the path for the fnRs
+
+# Quality profiles & #save the Rplots#
+QualityPlot <- plotQualityProfile(c(fnFs_full[1:2],fnRs_full[1:2]))   # Quality profiles
+pdf("/home/sukmb626/Madagscar/16S/QualityPlot.pdf")                   # save the Rplots in the home directory 
+dev.off()
+
+setwd(path_wd)
+
+outdir <- paste0("data")
+
+filt_path <- file.path(outdir, "filtered")                                  #Place filtered files in filtered/ subdirectory
+filtFs <- file.path(filt_path, paste0(sample.names, "_F_filt.fastq.gz"))    #create folders for intermediate files
+filtRs <- file.path(filt_path, paste0(sample.names, "_R_filt.fastq.gz"))    #create folders for intermediate files
+
+# perform the Trimming and Filtering
+
+duplicated(c(filtFs, filtRs))         #should be false 
+out <- filterAndTrim(fnFs_full, filtFs, fnRs_full, filtRs, truncLen=c(250,210),trimLeft=c(5, 5), maxN=0, maxEE=c(2,2), truncQ=5, rm.phix=TRUE, compress=TRUE, multithread=4) #save the filtered and timmed reads
+dim (out)    
+                                     
+plotQualityProfile(c(filtFs[1:2], fnFs_full[1:2])) #Check Forward reads after trimming 
+plotQualityProfile(c(filtRs[1:2], fnRs_full[1:2])) #Check Reverse reads after trimming 
+                     
+
+dir.create(paste0(outdir,"/errors"),recursive=T,showWarnings=F)  #create output directory
+
+errF <- learnErrors(filtFs, nbases=100000000, multithread=4)     #Learn forward error rates
+saveRDS(errF, paste0(outdir,"/errors/errF.Rds"))                 #create a error plot for forward reads
+
+errR <- learnErrors(filtRs, nbases=100000000, multithread=4)     #Learn reverse error rates
+saveRDS(errR, paste0(outdir,"/errors/errR.Rds"))                 #create a error plot for reverse reads
+
+plotErrors(errR, nominalQ=TRUE)  #plot the error plots
+
+png("errorPlot.png")             #save the plot
+dev.off()
+
+# Dereplication of reads 
+filtFs <- filtFs[file.exists(filtFs)]
+filtRs <- filtRs[file.exists(filtRs)]
+    
+derepFs <- derepFastq(filtFs, verbose=FALSE)
+derepRs <- derepFastq(filtRs, verbose=FALSE) 
+ 
+# Sequence inference
+dadaFs <- dada(derepFs, err=errF, multithread=4)
+dadaRs <- dada(derepRs, err=errR, multithread=4)  
+
+```
+
+Apply the hext line, when the vectors of sample name and dadaFs are not equal 
+
+```{r}
+###sample.names <- sapply(strsplit(basename(filtFs), "_"), `[`, 1)
+
+## Sequence inference
+#dadaFs <- dada(derepFs, err=errF, multithread=4)
+##dadaRs <- dada(derepRs, err=errR, multithread=4)
+
+```
+Continue with the merging of reads
+
+```{r}
+## Sequence merging
+mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs)
+
+# Chimera identification
+seqtab <- makeSequenceTable(mergers)
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=4, verbose=TRUE)
+
+#safe the seqtab.nochim
+saveRDS(seqtab.nochim, "/home/sukmb626/seqtab.nochim_16S_all.rds")
+saveRDS(seqtab, "/home/sukmb626/seqtab16S_all.rds")
+````
+
+
+## Sample Preparation
+
+Prepare the Metadata-Information to perform later a easy phyloseq-object generation
+The follwing libraries will be used in this step and carify your paths: 
+
+```{r}
+library(tidyverse)      # Use of pipe and lots of functions for a better R coding
+library(phyloseq)       # Because we are going to work with microbioe data using phyloseq object
+library(vegan)          # Many ecology related functions
+library(microbiome)     # some useful functions
+library(DESeq2)         # Test with negative binomial models
+library(dplyr) 
+library(dada2); packageVersion("dada2")
+library(magrittr)
+library(dplyr)
+set.seed(123)
+
+#set paths where to store/get your data from 
+
+path_reads <- "/work_beegfs/sukmb626/rawdata/16S_Raw_Reads"       #where the raw reads are stored
+path_taxonomy <- "home/sukmb626/Madagscar/16S/tax_assign"         #where the tax_assign table is stored
+path_table <- "/home/sukmb626/Madagscar/16S/tables"               #where the assign_tables are stored
+path_wd <- "/work_beegfs/sukmb626/16S_Madagascar_Deutschland"     #this is the working directory for later (!) 
+
+```
+
+Load the metadata and remove the samples, that have not been 16S rDNA amplicon sequenced
+
+```{r}
+setwd(path_wd)                                                  #metadata is stored here as well
+samples <- read_excel("Madagascar_Germany_Metadata.xlsx")
+samples_cleaned <- samples %>% filter(!is.na(id_ngs16S))        #only keep the samples, that are sequenced
+row.names(samples) <- samples$id_ngs16S
+
+ordered_samples <- samples[order(rownames(samples)),]           #alphabetical order to have later easier to merge with other tables
+
+```
+
+
+## Phyloseq Object
+
+Generate a Phyloseq-Object by seqtab.nochim object (output DADA2 pipeline beforehand)
+
+Upload the seqtab.nochim-object  and the metadata-table that was generated in the step before and upload the taxonomic tabel to which the samples should be annotated to. In our case it is RDP16_SV. 
+
+```{r}
+micro <- readRDS(paste0("seqtab.nochim_16S_all.rds"))
+ordered_samples <- samples[order(rownames(samples)),]                        #alphabetical order to have later easier to merge with other tables
+
+setwd(path_taxonomy)
+tax <- read.delim(paste0("taxa_Bayesian_RDP16_SV.tsv"),sep = " ")            #load the taxonomy table
+
+setwd(path_table)                                                            #where the assign_tables are stored
+taxonomy <- read.delim(paste0("Table_ASV_Bayesian_RDP16.tsv"), sep = "\t")   #load the taxonomy table
+setwd(path_wd)
+
+## order the tables in an alphabetical order, so that 16S-NGS-IDs will fit to each another
+
+ordered_micro <- micro[order(rownames(micro)),]
+ordered_taxonomy <- taxonomy[order(rownames(taxonomy)),]
+
+## check if the rownames of the different phyoseq-components would be the same
+
+identical(tax %>% rownames(), ordered_micro %>% colnames())
+identical(ordered_micro %>% rownames(), ordered_samples$id_ngs16S)
+
+
+
+##if this is not true, remove unidentical rownames:
+rownames_micro <- ordered_micro %>% rownames()
+rownames_samples <- ordered_samples$id_ngs16S
+
+unique_to_rownames_micro <- setdiff(rownames_micro, rownames_samples)
+unique_to_rownames_samples <- setdiff(rownames_samples, rownames_micro)
+
+rows_to_remove <- unique_to_rownames_micro 
+ordered_micro <- ordered_micro[!(rownames(ordered_micro) %in% rows_to_remove), ]
+
+##check again, if now we have the same data: 
+identical(ordered_micro %>% rownames(), ordered_samples$id_ngs16S)
+
+
+###also remove these date from the taxonomy table
+rownames_taxonomy <- ordered_taxonomy %>% rownames()
+
+unique_to_rownames_micro <- setdiff(rownames_micro, rownames_taxonomy )
+unique_to_rownames_taxonomy <- setdiff(rownames_taxonomy, rownames_micro )
+rows_to_remove <- unique_to_rownames_taxonomy
+ordered_taxonomy <- ordered_taxonomy[!(rownames(ordered_taxonomy) %in% rows_to_remove), ]
+
+
+identical(ordered_micro %>% rownames(), ordered_samples$id_ngs16S)
+
+
+
+#After ordering the samples and tabels and generate a Phyloseq Object
+
+
+tax.ps <-
+  tax_table(tax %>% as.matrix())
+
+micro.ps <-
+  otu_table(ordered_micro, taxa_are_rows = F)
+
+rownames(ordered_samples) <-
+  ordered_samples %>% pull(id_ngs16S)
+
+samples.ps <-
+  sample_data(ordered_samples %>% data.frame())
+
+rownames(samples.ps) <-
+  samples.ps %>% pull(id_ngs16S)
+
+ps <-
+  phyloseq(tax_table(tax.ps),  
+           otu_table(micro.ps, taxa_are_rows = F),
+           sample_data(samples.ps))
+
+ps
+```
+
+save everything:
+
+```{r}
+setwd("/work_beegfs/sukmb626/16S_Madagascar_Deutschland")
+
+saveRDS(ps, "/work_beegfs/sukmb626/16S_Madagascar_Deutschland/phloseq_16S_all.rds")
+save.image(file = "phyloseq16Sall.RData")
+
+ps <- phyloseq_16S_all
+```
+
+## Clean Phyloseq-Object
+
+Delete NTCs/Mocks, they have one thing in common: Not having a location
+
+```{r}
+sample_data_df <- data.frame(sample_data(ps))                                # extract metadata
+sample_data_filtered <- sample_data_df[!is.na(sample_data_df$location), ]    # remove rows (Samples) with NA in column 'location'
+ps_filtered <- prune_samples(rownames(sample_data_filtered), ps)             # choose the new samples as a phyloseq object 
+ps_filtered                                                                  # lil check on the remaining samples
+```
+
+## Data Insights
+
+Calculate the total counts of ASVs across all samples within this phyloseq object and plot them afterwards real quick
+```{r}
+counts <-
+  ps %>% 
+  otu_table() %>%
+  data.frame() %>% 
+  rowSums()
+counts
+
+to.plot <- counts %>% data.frame(counts = ., Sample = names(.))
+ggplot(to.plot, aes(x = Sample, y = counts)) + geom_col() + geom_hline(yintercept = 10000) + # add horizontal line
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```         
+
+Remove the samples that are "Zero" and also the reads that are "Zero" and rarefy samples to 10000 reads
+
+```{r}
+summary(sample_sums(ps_filtered))
+
+#Since we are interested in alpha diversity, it is ok to prune ASVs that are not present in any of the samples - BUT DON’T TRIM MORE THAN THAT! We need the rest! to have a proper estimation of low-abundance taxa!
+pruned <- prune_taxa(taxa_sums(ps_filtered) > 0, ps_filtered)
+
+taxa_sums(pruned)
+summary(taxa_sums(pruned))
+summary(sample_sums(pruned))
+
+pruned <-prune_samples(sample_sums(pruned) > 0, pruned)      #cut out also the samples that are zero
+summary(sample_sums(pruned))
+
+set.seed(123)
+pruned_even_depth <- rarefy_even_depth(pruned, sample.size = 10000, rngseed = FALSE) #rarefy to 10000 reads
+```
+
+Continue with just keeping bacteria and removing contaminations such as photosynthetic bacteria and other water contaminants 
+(Taxonomix levels are:  "Kingdom" "Phylum"  "Class"   "Order"   "Family"  "Genus"  )
+
+```{r}
+get_taxa_unique(pruned_even_depth)
+pruned_bacteria = subset_taxa(pruned_even_depth , Kingdom %in% c("Bacteria"))      #just keep bacteria 
+
+get_taxa_unique(pruned_bacteria, "Phylum")
+pruned_bacteria = subset_taxa(pruned_bacteria , !(Phylum %in% c("Cyanobacteria/Chloroplast")))    #remove  photosyntetische bacteria as Cyanobacteria/Chloroplast 
+
+save.image("/work_beegfs/sukmb626/16S_Madagascar_Deutschland/Mada_germany_16s_Analysis.RData")    #safe workspace in here
+````
+
+##Alpha Diversity Analysis
+
+to continue with th alpha diversity analysis (bacterial diversity within one sample) following libraries will be used: 
+
+```{r}
+library(phyloseq)                   # Because we are going to work with microbioe data using phyloseq object
+library(vegan)                      # Many ecology related functions
+library(tidyverse)                  # Use of pipe and lots of functions for a better R coding
+library(microbiome)                 # some useful functions
+library(DESeq2)                     # Test with negative binomial models
+library(dplyr) 
+library(dada2)
+library(magrittr)
+library(dplyr)
+library(readxl)
+library(Biostrings)
+library(ggplot2)
+library(ggpubr)
+```
+Now different alphadiversity measures will be calculates. I choosed for Chao1, Shannon Index and the "raw" observed calculation. 
+
+```{r}
+richness <- estimate_richness(pruned_bacteria , measures = c("Observed", "Chao1", "Shannon"))
+
+rich.CHAO1 <-                                 # create a rich dataframes, ways easier to plot
+  pruned_bacteria %>%
+  estimate_richness(measures = "Chao1") %>%   
+  rownames_to_column("pid")
+rich.Shannon <- 
+  pruned_bacteria %>%
+  estimate_richness(measures = "Shannon") %>% 
+  rownames_to_column("pid")
+rich.observed<- 
+  pruned_bacteria %>%
+  estimate_richness(measures = "Observed") %>% 
+  rownames_to_column("pid")
+
+Alpha.Diversity <- cbind(sample_data(pruned_bacteria), rich.Shannon, rich.CHAO1, rich.observed) #put them all together
+
+Alpha.Diversity$location[Alpha.Diversity$location == "TO_Tsiroanomandidy"] <- "Tsiroanomandidy" #change the names so its prettier in the plot                  
+Alpha.Diversity$location[Alpha.Diversity$location == "FA_Andina"] <- "Andina"
+Alpha.Diversity$location[Alpha.Diversity$location == "MA_Mahajanga_Ankazomborona"] <- "Mahajanga"
+Alpha.Diversity$location <- factor(Alpha.Diversity$location,  levels = c( "Andina", "Mahajanga", "Tsiroanomandidy","Kiel")) #ggplot needs a factor 
+Alpha.Diversity <- Alpha.Diversity[ , -1]                   #remove the dual "PID" column due to the cbind before 
+
+pdf("AlphaDiversity_16S.pdf", width = 8, height = 8)        #create a pdf containing the plots of the different alpha diversities
+
+ggplot(Alpha.Diversity, aes(x = location, y = Shannon)) +
+  geom_jitter(aes(color = factor(location)), width = 0.3, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  scale_color_manual(values = c("Mahajanga" = "#D81B60","Andina" = "#1E88E5", "Kiel" = "#FFC107", "Tsiroanomandidy" = "#004D40"),
+    name = "Location")+
+  labs(x = "Location", y = "Shannon") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  ) + 
+  stat_compare_means(comparisons = list(c("Tsiroanomandidy", "Andina"), 
+                                        c("Tsiroanomandidy", "Mahajanga"), 
+                                        c("Mahajanga", "Andina"), 
+                                        c("Kiel", "Mahajanga"), 
+                                        c("Kiel", "Tsiroanomandidy"), 
+                                        c("Kiel", "Andina")), 
+                       method = "wilcox.test", label = "p.signif", 
+                       label.y = c(5.1, 5.5, 5.7, 5.9, 6.2, 6.4), vjust = 0.3)
+
+ggplot(Alpha.Diversity, aes(x = location, y = Chao1)) +
+  geom_jitter(aes(color = factor(location)), width = 0.3, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  scale_color_manual(values = c("Mahajanga" = "#D81B60","Andina" = "#1E88E5", "Kiel" = "#FFC107", "Tsiroanomandidy" = "#004D40"),
+    name = "Location")+
+  labs(x = "Location", y = "Chao1") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  ) + 
+  stat_compare_means(comparisons = list(c("Tsiroanomandidy", "Andina"), 
+                                        c("Tsiroanomandidy", "Mahajanga"), 
+                                        c("Mahajanga", "Andina"), 
+                                        c("Kiel", "Tsiroanomandidy"),
+                                        c("Kiel", "Mahajanga"), 
+                                        c("Kiel", "Andina")),
+                       method = "wilcox.test", label = "p.signif", 
+                       label.y = c(500, 600, 700, 1200, 1300, 1400), vjust = 0.3)
+
+ggplot(Alpha.Diversity, aes(x = location, y = Observed)) +
+  geom_jitter(aes(color = factor(location)), width = 0.3, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  scale_color_manual(values = c("Mahajanga" = "#D81B60","Andina" = "#1E88E5", "Kiel" = "#FFC107", "Tsiroanomandidy" = "#004D40"),
+    name = "Location")+
+  labs(x = "Location", y = "Observed") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  ) + 
+  stat_compare_means(comparisons = list(c("Tsiroanomandidy", "Andina"), 
+                                        c("Tsiroanomandidy", "Mahajanga"), 
+                                        c("Mahajanga", "Andina"), 
+                                        c("Kiel", "Tsiroanomandidy"), 
+                                        c("Kiel", "Mahajanga"),
+                                        c("Kiel", "Andina")), 
+                       method = "wilcox.test", label = "p.signif", 
+                       label.y = c(500, 600, 700, 1000, 1050, 1100), vjust = 0.3)
+
+dev.off()
+
+Mada_germany_16s_Analysis <- saveRDS("/work_beegfs/sukmb626/16S_Madagascar_Deutschland/Mada_germany_16s_Analysis.RData")
+
+````
+### Alpha Diversity using Genus instead of ASVs
+Because the results are not in line with previous findings, that the alpha diversity in non-industrialized communities are are higher than in industrialized, I had a look on the Genus level. 
+
+Need the following libraries and the RData set:
+```{r}
+library(phyloseq)         # Because we are going to work with microbioe data using phyloseq object
+library(vegan)            # Many ecology related functions
+library(tidyverse)        # Use of pipe and lots of functions for a better R coding
+library(microbiome)       # some useful functions
+library(DESeq2)           # Test with negative binomial models
+library(dplyr) 
+library(dada2)
+library(magrittr)
+library(dplyr)
+library(readxl)
+library(Biostrings)
+library(ggplot2)
+library(ggpubr)
+
+load("/work_beegfs/sukmb626/16S_Madagascar_Deutschland/16S_Mada_germany_Anaylsis.RData")
+```
+Start with prune them to "Genus"-Level and what follows is literally identical what was performed beforehand:
+
+```{r}
+genus_data <- tax_glom(pruned_bacteria, taxrank = "Genus")    #prune them to Genus level 
+richness_genus <- estimate_richness(genus_data , measures = c("Observed", "Chao1", "Shannon"))
+
+rich.CHAO1.genus <- # create a rich datafram, ways easier to plot
+  genus_data%>%
+  estimate_richness(measures = "Chao1") %>% # get alpha diversity
+  rownames_to_column("pid")
+
+rich.Shannon.genus <- # create a rich datafram, ways easier to plot
+  genus_data %>%
+  estimate_richness(measures = "Shannon") %>% # get alpha diversity
+  rownames_to_column("pid")
+
+rich.observed.genus <- # create a rich datafram, ways easier to plot
+  genus_data %>%
+  estimate_richness(measures = "Observed") %>% # get alpha diversity
+  rownames_to_column("pid")
+
+Alpha.Diversity.genus <- cbind(sample_data(genus_data), rich.Shannon.genus, rich.CHAO1.genus, rich.observed.genus )
+
+sample_data(phyloseq_18S_filtered)$location <- gsub("FA_Andina", "Andina", sample_data(phyloseq_18S_filtered)$location)
+sample_data(phyloseq_18S_filtered)$location <- gsub("TO_Tsiroanomandidy", "Tsiroanomandidy", sample_data(phyloseq_18S_filtered)$location)
+sample_data(phyloseq_18S_filtered)$location <- gsub("MA_Mahajanga_Ankazomborona", "Mahajanga", sample_data(phyloseq_18S_filtered)$location)
+
+Alpha.Diversity.genus$location <- factor(Alpha.Diversity.genus$location, levels = c( "Andina", "Mahajanga", "Tsiroanomandidy", "Kiel"))
+Alpha.Diversity.genus <- Alpha.Diversity.genus[ , -1]
+
+ggplot(Alpha.Diversity.genus, aes(x = location, y = Shannon)) +
+  geom_jitter(aes(color = factor(location)), width = 0.3, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  scale_color_manual(values = c("Mahajanga" = "#D81B60","Andina" = "#1E88E5", "Kiel" = "#FFC107", "Tsiroanomandidy" = "#004D40"),
+    name = "Location")+
+  labs(x = "Location", y = "Shannon") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  ) + 
+  stat_compare_means(comparisons = list(c("Tsiroanomandidy", "Andina"), 
+                                        c("Tsiroanomandidy", "Mahajanga"), 
+                                        c("Mahajanga", "Andina"), 
+                                        c("Kiel", "Mahajanga"), 
+                                        c("Kiel", "Tsiroanomandidy"), 
+                                        c("Kiel", "Andina")), 
+                       method = "wilcox.test", label = "p.signif", 
+                       label.y = c(4.0, 4.3, 4.6, 4.8, 5.1, 5.3), vjust = 0.3)
+
+
+ggplot(Alpha.Diversity.genus, aes(x = location, y = Chao1)) +
+  geom_jitter(aes(color = factor(location)), width = 0.3, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  scale_color_manual(values = c("Mahajanga" = "#D81B60","Andina" = "#1E88E5", "Kiel" = "#FFC107", "Tsiroanomandidy" = "#004D40"),
+    name = "Location")+
+  labs(x = "Location", y = "Chao1") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  ) + 
+  stat_compare_means(comparisons = list(c("Tsiroanomandidy", "Andina"), 
+                                        c("Tsiroanomandidy", "Mahajanga"), 
+                                        c("Mahajanga", "Andina"), 
+                                        c("Kiel", "Mahajanga"), 
+                                        c("Kiel", "Tsiroanomandidy"), 
+                                        c("Kiel", "Andina")), 
+                       method = "wilcox.test", label = "p.signif", 
+                       label.y = c( 90, 95, 100, 105, 110, 115), vjust = 0.3)
+
+ggplot(Alpha.Diversity.genus, aes(x = location, y = Observed)) +
+  geom_jitter(aes(color = factor(location)), width = 0.3, height = 0, alpha = 0.3, size = 2)+
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  scale_color_manual(values = c("Mahajanga" = "#D81B60","Andina" = "#1E88E5", "Kiel" = "#FFC107", "Tsiroanomandidy" = "#004D40"),
+    name = "Location")+
+  labs(x = "Location", y = "Observed") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  ) + 
+  stat_compare_means(comparisons = list(c("Tsiroanomandidy", "Andina"), 
+                                        c("Tsiroanomandidy", "Mahajanga"), 
+                                        c("Mahajanga", "Andina"), 
+                                        c("Kiel", "Mahajanga"), 
+                                        c("Kiel", "Tsiroanomandidy"), 
+                                        c("Kiel", "Andina")), 
+                       method = "wilcox.test", label = "p.signif", 
+                       label.y = c(80, 85, 90, 95, 100, 105), vjust = 0.3)
+
+dev.off()
+
+
+Mada_germany_16s_Analysis <- saveRDS("/work_beegfs/sukmb626/16S_Madagascar_Deutschland/Mada_germany_16s_Analysis.RData")
+
+save.image("/work_beegfs/sukmb626/16S_Madagascar_Deutschland/Mada_germany_16s_Analysis.RData")
+
+````
+
+
+
+
+It is extremely weird, that the Kiel People have such a more diverse bacterial community. Let's continute analysing 
+
+## Beta Diversity
+
+````{r}
+
+sample_data(pruned_bacteria)$location[sample_data(pruned_bacteria)$location == "TO_Tsiroanomandidy"] <- "Tsiroanomandidy"
+sample_data(pruned_bacteria)$location[sample_data(pruned_bacteria)$location == "Kiel"] <- "Kiel"
+sample_data(pruned_bacteria)$location[sample_data(pruned_bacteria)$location == "FA_Andina"] <- "Andina"
+sample_data(pruned_bacteria)$location[sample_data(pruned_bacteria)$location == "MA_Mahajanga_Ankazomborona"] <- "Mahajanga"
+
+
+
+ps.ord <-
+  pruned_bacteria %>% 
+  ordinate("NMDS", "bray")
+
+
+p1 =plot_ordination(pruned_bacteria, ps.ord, type = "pid", color = "location") + 
+  stat_ellipse(mapping= aes(fill = location),geom = "polygon", alpha = 0.1, show.legend = FALSE) +
+  #scale_shape_manual(values=c(1,0)) +
+  #coord_cartesian(xlim = c(-0.0005, 0.0005), ylim = c(-0.0005, 0.0005))+
+  scale_color_manual(values = c("Mahajanga" = "#D81B60","Andina" = "#1E88E5", "Kiel" = "#FFC107", "Tsiroanomandidy" = "#004D40"), name = "Location") +
+  theme_bw()+
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10)) 
+print(p1)
+
+
+
+
+
+
+micro.dis <-
+  pruned_bacteria %>% 
+  rarefy_even_depth() %>% # let's rarefy the data to make sure that sequencing depth is similar for all samples
+  phyloseq::distance("bray")
+
+
+adonis2(micro.dis ~ sex + location + pcr_mansoni, data = pruned_bacteria%>% sample_data() %>% data.frame())
+
+
+````
+ok this distribution of beta diversity was kinda expected
+
+let us continue with the taxaonomiy analysis 
+
+
+
+## Beta Diversity for Genus instead of ASVs
+
+````{r}
+
+sample_data(genus_data)$location[sample_data(genus_data)$location == "TO_Tsiroanomandidy"] <- "Tsiroanomandidy"
+sample_data(genus_data)$location[sample_data(genus_data)$location == "Kiel"] <- "Kiel"
+sample_data(genus_data)$location[sample_data(genus_data)$location == "FA_Andina"] <- "Andina"
+sample_data(genus_data)$location[sample_data(genus_data)$location == "MA_Mahajanga_Ankazomborona"] <- "Mahajanga"
+
+
+ps.ord <-
+  genus_data %>% 
+  ordinate("NMDS", "bray")
+
+
+
+p1 =plot_ordination(genus_data, ps.ord, type = "pid", color = "location") + 
+  stat_ellipse(mapping= aes(fill = location),geom = "polygon", alpha = 0.1, show.legend = FALSE) +
+  #scale_shape_manual(values=c(1,0)) +
+  #coord_cartesian(xlim = c(-0.0005, 0.0005), ylim = c(-0.0005, 0.0005))+
+  scale_color_manual(values = c("Mahajanga" = "#D81B60","Andina" = "#1E88E5", "Kiel" = "#FFC107", "Tsiroanomandidy" = "#004D40"), name = "Location") +
+  theme_bw()+
+  theme(
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10)) 
+print(p1)
+
+micro.dis <-
+  genus_data %>% # let's rarefy the data to make sure that sequencing depth is similar for all samples
+  phyloseq::distance("bray")
+
+adonis_location <- adonis2(formula = micro.dis ~ location, data = genus_data %>% sample_data() %>% data.frame())
+adonis_sex <- adonis2(formula = micro.dis ~ sex, data = genus_data %>% sample_data() %>% data.frame())
+adonis_age <- adonis2(formula = micro.dis ~ age, data = genus_data %>% sample_data() %>% data.frame())
+
+# Ergebnisse in einer Tabelle zusammenfassen
+results <- data.frame(
+  Factor = c("location", "sex"),
+  Df = c(adonis_location$Df[1], adonis_sex$Df[1]),
+  SumOfSqs = c(adonis_location$SumOfSqs[1], adonis_sex$SumOfSqs[1]),
+  R2 = c(adonis_location$R2[1], adonis_sex$R2[1]),
+  F = c(adonis_location$F[1], adonis_sex$F[1]),
+  `Pr(>F)` = c(adonis_location$`Pr(>F)`[1], adonis_sex$`Pr(>F)`[1])
+)
+
+print(results)
+
+
+````
+
+## Taxonomy Analysis
+
+````{r}
+PS <- prune_taxa(taxa_sums(pruned_bacteria) > 0, pruned_bacteria) #removes taxa (species or operational taxonomic units, OTUs) that have a total abundance of zero across all samples
+PS_filt <- prune_samples(sample_sums(PS) > 0, PS) 
+
+transform_function <- function(x) {
+  total <-sum(x)
+  if (total ==0) {
+    return (x)
+  } else {
+    return (x/ total *100)
+  }
+}
+
+
+ps.rel <- transform_sample_counts(PS_filt, transform_function) ##convert raw abundance counts into relative abundances expressed as percentages.
+
+# agglomerate taxa
+glom <- tax_glom(ps.rel, taxrank = "Family") #include here hwatever level you wanna have
+
+
+ps.melt <- psmelt(glom)
+ps.melt$Phylum <- as.character(ps.melt$Phylum)
+
+ps.melt <- ps.melt %>%
+  group_by(location, Phylum) %>%
+  mutate(median=median(Abundance))
+
+ps.melt_sum <- ps.melt %>%
+  group_by(location, Phylum) %>%
+  summarise(Abundance=sum(Abundance))
+
+
+##generate bbrplots with relative abundance
+
+ggplot(ps.melt_sum, aes(x = location, y = Abundance, fill = Phylum)) + 
+  geom_bar(stat = "identity", aes(fill=Phylum), position = "fill" ) + 
+  labs(x="location", y="Relative Abundance%") +
+  facet_wrap(~location, scales= "free_x", nrow=1) +
+  #scale_fill_manual( values = colors_20) +
+  ggtitle("Taxonomy_PhylumLevel") +
+  theme_classic() + 
+  theme(strip.background = element_blank(), 
+        axis.text.x.bottom = element_text(angle = -90))
+
+
+
+library(tidyr)
+
+ps.melt_sum_location <- ps.melt %>%
+  group_by(location, Phylum) %>%
+  summarise(mean_abundance = mean(Abundance))  # Use median() if preferred
+
+abundance_wide <- ps.melt_sum_location %>%
+  pivot_wider(names_from = location, values_from = mean_abundance, values_fill = 0) %>%
+  column_to_rownames("Phylum")
+
+abundance_wide <- abundance_wide[, c("Andina", "Tsiroanomandidy", "Mahajanga", "Kiel")]
+
+# Create the heatmap with reordered columns
+
+library(pheatmap)
+
+
+pheatmap(
+  abundance_wide,
+  scale = "row",
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "complete",
+  show_rownames = TRUE,  # Keep this TRUE to show row names
+  show_colnames = TRUE,  # Keep this TRUE to show column names
+  border_color = "white",
+  main = "Heatmap of Phylum Abundance by Location",
+  fontsize_row = 8,
+  fontsize_col = 10,
+  cluster_cols = FALSE  # Prevent clustering of columns
+)
+
+
+ps.melt_sum_location <- ps.melt %>%
+  group_by(location, Phylum) %>%
+  summarise(mean_abundance = mean(Abundance))  # Use median() if preferred
+
+abundance_wide <- ps.melt_sum_location %>%
+  pivot_wider(names_from = location, values_from = mean_abundance, values_fill = 0) %>%
+  column_to_rownames("Phylum")
+
+abundance_wide <- abundance_wide[, c("Andina", "Tsiroanomandidy", "Mahajanga", "Kiel")]
+
+# Create the heatmap with reordered columns
+
+library(pheatmap)
+
+
+pheatmap(
+  abundance_wide,
+  scale = "row",
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "complete",
+  show_rownames = TRUE,  # Keep this TRUE to show row names
+  show_colnames = TRUE,  # Keep this TRUE to show column names
+  border_color = "white",
+  main = "Heatmap of Phylum Abundance by Location",
+  fontsize_row = 8,
+  fontsize_col = 10,
+  cluster_cols = FALSE  # Prevent clustering of columns
+)
+
+
+
+
+
+
+
+PS <- prune_taxa(taxa_sums(PS) > 0, PS) #removes taxa (species or operational taxonomic units, OTUs) that have a total abundance of zero across all samples
+PS_filt <- prune_samples(sample_sums(PS) > 0, PS) #removes samples that have a total abundance of zero across all taxa
+
+total_sequences <- sum(otu_table(PS_filt)) #total number of sequences (reads) across all taxa and samples
+
+genus_abundance <- taxa_sums(PS_filt) / total_sequences # Calculate the proportion of each taxon
+
+keep_genera <- genus_abundance > 0.0005  #  Create a logical vector to identify genera that are > 0.1% present 
+
+PS_filt <- prune_taxa(keep_genera, PS_filt) # Prune the taxa to keep only those with > 0.1% presence
+
+
+
+
+#GP <- pruned_even_depth_parasites_human
+#genus.sum = tapply(taxa_sums(GP), tax_table(GP)[, "Genus"], sum, na.rm=TRUE)
+#top20genus = names(sort(genus.sum, TRUE))[1:20]
+#GP_mostgenus = prune_taxa((tax_table(GP)[, "Genus"] %in% top20genus), GP)
+
+
+##remember the levels in PR2 "Supergroup","Division","Subdevision", "Class","Order","Family","Genus","Species"))
+
+transform_function <- function(x) {
+  total <-sum(x)
+  if (total ==0) {
+    return (x)
+  } else {
+    return (x/ total *100)
+  }
+}
+
+
+ps.rel <- transform_sample_counts(PS_filt, transform_function) ##convert raw abundance counts into relative abundances expressed as percentages.
+
+# agglomerate taxa
+glom <- tax_glom(ps.rel, taxrank = "Genus")
+
+
+ps.melt <- psmelt(glom)
+ps.melt$Genus <- as.character(ps.melt$Genus)
+
+ps.melt <- ps.melt %>%
+  group_by(sex, Genus) %>%
+  mutate(median=median(Abundance))
+
+ps.melt_sum <- ps.melt %>%
+  group_by(sex, Genus) %>%
+  summarise(Abundance=sum(Abundance))
+
+
+##generate bbrplots with relative abundance
+
+ggplot(ps.melt_sum, aes(x = location, y = Abundance, fill = Genus)) + 
+  geom_bar(stat = "identity", aes(fill=Genus), position = "fill" ) + 
+  labs(x="location", y="Relative Abundance%") +
+  facet_wrap(~location, scales= "free_x", nrow=1) +
+  #scale_fill_manual( values = colors_20) +
+  ggtitle("Taxonomy_GenusLevel") +
+  theme_classic() + 
+  theme(strip.background = element_blank(), 
+        axis.text.x.bottom = element_text(angle = -90))
+
+
+
+library(tidyr)
+
+ps.melt_sum_location <- ps.melt %>%
+  group_by(location, Genus) %>%
+  summarise(mean_abundance = mean(Abundance))  # Use median() if preferred
+
+abundance_wide <- ps.melt_sum_location %>%
+  pivot_wider(names_from = location, values_from = mean_abundance, values_fill = 0) %>%
+  column_to_rownames("Genus")
+
+abundance_wide <- abundance_wide[, c("Kiel", "Mahajanga", "Tsiroanomandidy", "Andina")]
+
+# Create the heatmap with reordered columns
+pheatmap(
+  abundance_wide,
+  scale = "row",
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "complete", 
+  show_rownames = TRUE,   # Keep this TRUE to show row names
+  show_colnames = TRUE,   # Keep this TRUE to show column names
+  border_color = "white",
+  main = "Heatmap of Genus Abundance by Location",
+  fontsize_row = 8,
+  fontsize_col = 10, 
+  cluster_cols = FALSE  # Prevent clustering of columns
+)
+
+
+
+````
+
+
+##Enterotypes
+```{r}
+
+library(phyloseq)
+library(dplyr)
+library(tidyr)
+
+PS <- prune_taxa(taxa_sums(pruned_bacteria) > 0, pruned_bacteria) #removes taxa (species or operational taxonomic units, OTUs) that have a total abundance of zero across all samples
+PS_filt <- prune_samples(sample_sums(PS) > 0, PS) 
+
+transform_function <- function(x) {
+  total <-sum(x)
+  if (total ==0) {
+    return (x)
+  } else {
+    return (x/ total *100)
+  }
+}
+
+
+ps.rel <- transform_sample_counts(PS_filt, transform_function)
+
+sample_data(ps.rel)$location[sample_data(ps.rel)$location == "TO_Tsiroanomandidy"] <- "Tsiroanomandidy"
+sample_data(ps.rel)$location[sample_data(ps.rel)$location == "Kiel"] <- "Kiel"
+sample_data(ps.rel)$location[sample_data(ps.rel)$location == "FA_Andina"] <- "Andina"
+sample_data(ps.rel)$location[sample_data(ps.rel)$location == "MA_Mahajanga_Ankazomborona"] <- "Mahajanga"
+
+
+
+
+ps.rel_bacteroides = subset_taxa(ps.rel, Genus == "Bacteroides")
+ps.rel_prevotella = subset_taxa(ps.rel, Genus == "Prevotella")
+ps.rel_ruminococcus = subset_taxa(ps.rel, Genus == "Ruminococcus")
+
+
+# Convert the phyloseq object to a data frame
+bacteroides_abundance <- as.data.frame(otu_table(ps.rel_bacteroides))
+
+# Add sample metadata (e.g., location)
+bacteroides_abundance$location <- sample_data(ps.rel_bacteroides)$location
+
+# Summarize abundance for each sample
+bacteroides_abundance <- bacteroides_abundance %>%
+  rowwise() %>%
+  mutate(TotalAbundance = sum(c_across(where(is.numeric)))) %>%
+  select(location, TotalAbundance)
+
+library(ggpubr)
+
+bacteroides_abundance$location <- factor(bacteroides_abundance$location,  levels = c( "Andina", "Mahajanga", "Tsiroanomandidy", "Kiel"))
+
+
+ggplot(bacteroides_abundance, aes(x = location, y = TotalAbundance)) +
+  geom_jitter(width = 0.3, height = 0, alpha = 0.3, size = 2, color = "forestgreen") +  # Punkte in grün
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  labs(
+    title = "Abundance of Bacteroides by Location",
+    x = "location", 
+    y = "Relative Abundance in %") + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Schriftgröße der Achsenbeschriftungen (Tick Labels)
+    axis.title = element_text(size = 16, face = "bold")  # Schriftgröße der Achsentitel
+  ) + 
+  stat_compare_means(comparisons = list(c("Tsiroanomandidy", "Andina"), 
+                                        c("Tsiroanomandidy", "Mahajanga"), 
+                                        c("Mahajanga", "Andina"), 
+                                        c("Kiel", "Mahajanga"), 
+                                        c("Kiel", "Tsiroanomandidy"), 
+                                        c("Kiel", "Andina")), 
+                       method = "wilcox.test", label = "p.signif", 
+                       label.y = c( 50, 55, 60, 65, 70, 75), vjust = 0.3)
+
+
+
+# Subset the phyloseq object for Prevotella
+ps.rel_prevotella <- subset_taxa(ps.rel, Genus == "Prevotella")
+
+# Convert the phyloseq object to a data frame
+prevotella_abundance <- as.data.frame(otu_table(ps.rel_prevotella))
+
+# Add sample metadata (e.g., location)
+prevotella_abundance$location <- sample_data(ps.rel_prevotella)$location
+
+# Summarize abundance for each sample
+prevotella_abundance <- prevotella_abundance %>%
+  rowwise() %>%
+  mutate(TotalAbundance = sum(c_across(where(is.numeric)))) %>%
+  select(location, TotalAbundance)
+
+# Reorder factor levels for location
+prevotella_abundance$location <- factor(prevotella_abundance$location, 
+                                        levels = c("Andina", "Mahajanga", "Tsiroanomandidy", "Kiel"))
+
+# Plot
+ggplot(prevotella_abundance, aes(x = location, y = TotalAbundance)) +
+  geom_jitter(width = 0.3, height = 0, alpha = 0.3, size = 2, color = "darkred") +  # Points in green
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  labs(
+    title = "Abundance of Prevotella by Location",
+    x = "Location", 
+    y = "Relative Abundance in %"
+  ) + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Axis tick label font size
+    axis.title = element_text(size = 16, face = "bold")  # Axis title font size
+  ) + 
+  stat_compare_means(comparisons = list(c("Tsiroanomandidy", "Andina"), 
+                                        c("Tsiroanomandidy", "Mahajanga"), 
+                                        c("Mahajanga", "Andina"), 
+                                        c("Kiel", "Mahajanga"), 
+                                        c("Kiel", "Tsiroanomandidy"), 
+                                        c("Kiel", "Andina")), 
+                     method = "wilcox.test", label = "p.signif", 
+                     label.y = c(60, 65, 70, 75, 80, 85), vjust = 0.3)
+
+
+# Subset the phyloseq object for Ruminococcus
+ps.rel_ruminococcus <- subset_taxa(ps.rel, Genus == "Ruminococcus")
+
+# Convert the phyloseq object to a data frame
+ruminococcus_abundance <- as.data.frame(otu_table(ps.rel_ruminococcus))
+
+# Add sample metadata (e.g., location)
+ruminococcus_abundance$location <- sample_data(ps.rel_ruminococcus)$location
+
+# Summarize abundance for each sample
+ruminococcus_abundance <- ruminococcus_abundance %>%
+  rowwise() %>%
+  mutate(TotalAbundance = sum(c_across(where(is.numeric)))) %>%
+  select(location, TotalAbundance)
+
+# Reorder factor levels for location
+ruminococcus_abundance$location <- factor(ruminococcus_abundance$location, 
+                                          levels = c("Andina", "Mahajanga", "Tsiroanomandidy", "Kiel"))
+
+# Plot
+ggplot(ruminococcus_abundance, aes(x = location, y = TotalAbundance)) +
+  geom_jitter(width = 0.3, height = 0, alpha = 0.3, size = 2, color = "skyblue") +  # Points in red
+  geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2) +
+  labs(
+    title = "Abundance of Ruminococcus by Location",
+    x = "Location", 
+    y = "Relative Abundance in %"
+  ) + 
+  theme(
+    panel.grid = element_blank(),
+    panel.background = element_rect(fill = "white", color = NA),
+    legend.position = "right",
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    axis.text = element_text(size = 14),        # Axis tick label font size
+    axis.title = element_text(size = 16, face = "bold")  # Axis title font size
+  ) + 
+  stat_compare_means(comparisons = list(c("Tsiroanomandidy", "Andina"), 
+                                        c("Tsiroanomandidy", "Mahajanga"), 
+                                        c("Mahajanga", "Andina"), 
+                                        c("Kiel", "Mahajanga"), 
+                                        c("Kiel", "Tsiroanomandidy"), 
+                                        c("Kiel", "Andina")), 
+                     method = "wilcox.test", label = "p.signif", 
+                     label.y = c(30, 35, 40, 45, 50, 55), vjust = 0.3)
+
+```
+#complexHeatmap
+```{r}
+# Installiere und lade ComplexHeatmap, falls noch nicht geschehen
+if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
+    install.packages("ComplexHeatmap")
+}
+library(ComplexHeatmap)
+library(circlize)  # Für zusätzliche Farbskalen
+
+# Beispielhafte p-Werte (nur als Beispiel), füge hier deine echten p-Werte hinzu
+# Anzahl der Zeilen in abundance_wide
+num_rows <- nrow(abundance_wide)
+
+# Beispielhafte p-Werte (ersetze diese mit deinen tatsächlichen Werten)
+# Erzeuge so viele p-Werte wie Zeilen vorhanden sind
+p_values <- runif(num_rows, 0, 0.1)  # Beispiel p-Werte für jede Zeile
+significance_annotation <- ifelse(p_values < 0.05, "Significant", "Not Significant")
+
+# Erstelle die Annotation für die Zeilen basierend auf Signifikanz
+row_annotation <- rowAnnotation(
+    Significance = significance_annotation,
+    col = list(Significance = c("Significant" = "red", "Not Significant" = "grey"))
+)
+
+# Zeichne die Heatmap mit der Annotation
+Heatmap(
+    abundance_wide,
+    name = "Abundance",
+    col = colorRamp2(c(min(abundance_wide), max(abundance_wide)), c("blue", "red")),
+    right_annotation = row_annotation,  # Signifikanz-Annotation für die Zeilen
+    show_row_names = TRUE,
+    show_column_names = TRUE,
+    column_title = "Heatmap of Phylum Abundance by Location with Significance"
+)
+
+```
+
+
+
+
+
+DDseq2 for Sex distribution
+````{r}
+
+library(tidyverse) # Use of pipe and lots of functions for a better R coding
+library(phyloseq) # Because we are going to work with microbioe data using phyloseq object
+library(vegan) # Many ecology related functions
+library(microbiome) # some useful functions
+library(DESeq2)# Test with negative binomial models
+library(dplyr) 
+library(dada2); packageVersion("dada2")
+library(magrittr)
+library(dplyr)
+library(DESeq2)
+
+
+subset_p1 <- subset_samples(GP_mostgenus, sex %in% c("female", "male"))
+
+ps.to.dseq <-
+  subset_p1 %>%
+  aggregate_taxa(level = "Genus")
+
+dseq <-
+  ps.to.dseq %>% 
+  phyloseq_to_deseq2 (~ sex + location)
+
+
+dseq <-
+  ps.to.dseq %>% 
+  phyloseq_to_deseq2 (~ pcr_mansoni + c_b01_csbnom_s + pcr_mansoni:c_b01_csbnom_s)
+
+estimateSizeFactors(dseq, type = 'poscounts')
+dseq <- estimateSizeFactors(dseq, type = 'poscounts')
+
+
+
+
+# Perform test. There is a lot going under the hood here, including: estimation of size factors, estimation of dispersion, and Negative Binomial GLM fitting and Wald statistics.
+res <-
+  DESeq(dseq)
+
+res %>% colData %>% head()
+
+# Extract the result table
+res.df <-
+  res %>% 
+  results(tidy = T)
+
+#Visualize what we got out of it
+res.df %>% head()
+
+
+
+
+
+```
+
+That's it! You can have a look at the res.df table and you will find the results of all the genus tested. Depending on your question, you can perform similar analysis to all levels, from phylum to ASV (subspecies level). 
+
+So, to finish, let's format this table and visualize the data using ggplot2.
+
+```{r}
+# Filter and format to plot
+res.df.to.plot <-
+  res.df %>% 
+  filter(padj < 0.05) %>% # keep only results with adjusted P value less than 0.05
+  mutate(Genus = row) %>% # Create Genus column
+  left_join(tax_table(ps.to.dseq )@.Data %>% data.frame(), by = "Genus") %>% # Add taxonomy information from the phyloseq object.
+  # Arrange the data for a prettier plot
+  arrange(log2FoldChange) %>% 
+  mutate(Genus = factor(Genus, levels = Genus %>% unique()))
+
+head(res.df.to.plot)
+
+
+#Plot
+
+ggplot(res.df.to.plot, aes(x = log2FoldChange, y = Genus)) + 
+  geom_point(aes(col = Genus, size = baseMean)) + 
+  geom_text(aes(label = Genus), nudge_x = 0.0, nudge_y = 0.3, size = 3, check_overlap = TRUE) + 
+  geom_vline(xintercept = 0) + 
+  theme_minimal() +  # Minimalistisches Theme
+  theme(
+    axis.text.y = element_blank(),  # Y-Achsentexte entfernen
+    axis.ticks.y = element_blank()   # Y-Achsenticks entfernen
+  ) +
+  guides(col = guide_legend(reverse = TRUE))
+
+````
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+GP <- pruned_bacteria
+genus.sum = tapply(taxa_sums(GP), tax_table(GP)[, "Genus"], sum, na.rm=TRUE)
+top20genus = names(sort(genus.sum, TRUE))[1:20]
+GP_mostgenus = prune_taxa((tax_table(GP)[, "Genus"] %in% top20genus), GP)
+
+ps.rel <- transform_sample_counts(GP, transform_function) ##convert raw abundance counts into relative abundances expressed as percentages.
+
+# agglomerate taxa
+glom <- tax_glom(ps.rel, taxrank = "Genus")
+
+ps.melt <- psmelt(glom)
+ps.melt$Genus <- as.character(ps.melt$Genus)
+
+ps.melt <- ps.melt %>%
+  group_by(location, Genus) %>%
+  mutate(median=median(Abundance))
+
+ps.melt_sum <- ps.melt %>%
+  group_by(location, Genus) %>%
+  summarise(Abundance=sum(Abundance))
+
+
+##generate bbrplots with relative abundance
+
+ggplot(ps.melt_sum, aes(x = location, y = Abundance, fill = Genus)) + 
+  geom_bar(stat = "identity", aes(fill=Genus), position = "fill" ) + 
+  labs(x="location", y="Relative Abundance%") +
+  facet_wrap(~location, scales= "free_x", nrow=1) +
+  #scale_fill_manual( values = colors_20) +
+  ggtitle("Taxonomy_GenusLevel") +
+  theme_classic() + 
+  theme(strip.background = element_blank(), 
+        axis.text.x.bottom = element_text(angle = -90))
+
+
+
 
