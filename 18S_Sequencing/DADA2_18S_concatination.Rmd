@@ -1,0 +1,164 @@
+---
+title: "DADA2_18S_concatination"
+author: "Johanna"
+date: "2025-02-18"
+output: html_document
+---
+
+```{bash}
+conda activate 18S_
+```
+
+#DADA2 Pipeline for 18S rDNA sequencing reads
+In this script, I perform the DADA2 pipeline apply Malthe's DADA2 Workflow (https://github.com/mruehlemann/ikmb_amplicon_processing/blob/master/dada2_16S_workflow_with_AR.R) on my 18S V4V5 sequencing reads. 
+All steps are performed in R. 
+```{bash}
+R
+```
+
+##Load Libraries
+```{r}
+library(tidyverse) 
+library(phyloseq) 
+library(microbiome)
+library(DESeq2)
+library(dada2)
+library(vegan)
+```
+
+## Raw Reads 
+First, raw sequencing reads (in FastQ Files) are loaded in the R environment, forward and reverse reads are kept, and qulaity profiles are plotted. 
+```{r}
+ # include where your raw data is stored
+path="~/raw_data_18S" # include where your raw data is stored
+
+# list all files
+fns <- list.files(path)
+
+# keep only FastQ files
+fastqs <- fns[grepl(".fastq.gz$", fns)]
+fastqs <- sort(fastqs) # Sort ensures forward/reverse reads are in same order
+
+
+### make sure that R1 is for forward read and R2 for reverse
+
+fnFs <- fastqs[grepl("R1_001.fastq.gz", fastqs)] ## Just the forward read files
+fnRs <- fastqs[grepl("R2_001.fastq.gz", fastqs)] ## Just the reverse read files
+
+# Sample names are derived from the filenames
+sample.names <- sapply(strsplit(fnFs, "_"), `[`, 2)
+cat(paste0("Starting processing for ",length(sample.names)," samples\n"))
+duplicated(sample.names)
+
+## Fully specify the path for the fnFs and fnRs
+fnFs_full <- file.path(path, fnFs)
+fnRs_full <- file.path(path, fnRs)
+
+# Quality profiles & #save the Rplots#
+QualityPlot <- plotQualityProfile(c(fnFs_full[1:2],fnRs_full[1:2]))
+pdf("~/QC/QualityPlot.pdf")
+dev.off()
+
+outdir=paste0("data")
+
+```
+
+## Trimming and Filterung of Forward and Reverse Reads
+Intermediated, filtered files will be stored in an extra folder, where the Trimming and Filtering is performed. One sample had to be removed due to 2 forward reads and 0 reverse reads. This samples is 1 of 4 MOCK-communities. 
+```{r}
+### create folders for intermediate files
+filt_path <- file.path(outdir, "filtered") 
+
+# Place filtered files in filtered/ subdirectory
+filtFs <- file.path(filt_path, paste0(sample.names, "_F_filt.fastq.gz"))
+filtRs <- file.path(filt_path, paste0(sample.names, "_R_filt.fastq.gz"))
+
+
+### perform the Trimming and Filtering
+duplicated(c(filtFs, filtRs)) #should be FALSEe
+out <- filterAndTrim(fnFs_full, filtFs, fnRs_full, filtRs, truncLen=c(250,210),trimLeft=c(5, 5), maxN=0, maxEE=c(2,2), truncQ=5, rm.phix=TRUE, compress=TRUE, multithread=4)
+
+# The Warning: data/filtered/22Dez7-DL384_F_filt.fastq.gz and data/filtered/22Dez7-DL384_R_filt.fastq.gz not written.
+
+out1 <- out[!(row.names(out) %in% c("221200000007-DS384_22Dez7-DL384_S384_L001_R1_001.fastq.gz")),]
+
+### check the dimentions of out1
+dim (out1) 
+
+### Check reads after trimming                                         
+plotQualityProfile(c(filtFs[1:2], fnFs_full[1:2]))
+plotQualityProfile(c(filtRs[1:2], fnRs_full[1:2]))
+```
+
+## Learning Error Rates
+In an output directory, error models will be stored. 100 million bases are used to estimate error rates and the error rates will be plotted for forward and reverse reads. 
+```{r}
+### create output directory
+dir.create(paste0(outdir,"/errors"),recursive=T,showWarnings=F)
+
+### Learn forward error rates
+errF <- learnErrors(filtFs, nbases=100000000, multithread=4)
+saveRDS(errF, paste0(outdir,"/errors/errF.Rds"))
+
+### Learn reverse error rates
+errR <- learnErrors(filtRs, nbases=100000000, multithread=4)
+saveRDS(errR, paste0(outdir,"/errors/errR.Rds"))
+
+plotErrors(errF, nominalQ=TRUE)
+plotErrors(errR, nominalQ=TRUE)
+
+###save the plot
+png("myplot.png")
+dev.off()
+
+```
+
+## Dereplication 
+Collapsing identical sequences to speed up the processing
+```{r}
+filtFs <- filtFs[file.exists(filtFs)]
+filtRs <- filtRs[file.exists(filtRs)]
+
+### remove any files, that don't exist
+derepFs <- derepFastq(filtFs, verbose=FALSE)
+derepRs <- derepFastq(filtRs, verbose=FALSE)
+```
+
+##Sequence Inference
+Denoising and Concatinating of reads is performed. 
+```{r}
+###Denoising: Identifies real biological sequences while removing sequencing errors.
+dadaFs <- dada(derepFs, err=errF, multithread=4)
+dadaRs <- dada(derepRs, err=errR, multithread=4)
+
+###Merging of forward and reverse reads into full sequences by just concatinating
+mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs, justConcatenate = TRUE)
+
+```
+## Chimera Removal
+Tables of unique sequencies and the removal onf chimeric sequencies is performed here and the seqencing tables are saved as RDS files. 
+```{r}
+seqtab <- makeSequenceTable(mergers)
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=4, verbose=TRUE)
+
+saveRDS(seqtab.nochim, "~/seqtab.nochim_18S_all.rds")
+saveRDS(seqtab, "~/seqtab_all.rds")
+```
+
+## Optional: Checking the Dimensions of Output and tracking the Read Retention
+Dimensions of important objects are examined to check consistency and a table is saved to monitor how many reads survive each step. 
+```{r}
+dim(out1)
+dim(dadaFs)
+dim(mergers)
+dim(seqtab)
+dim(seqtab.nochim)
+length(sample.names)
+
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out, sapply(dadaFs, getN), sapply(mergers, getN), rowSums(seqtab), rowSums(seqtab.nochim))
+colnames(track) <- c("input", "filtered", "denoised", "merged", "tabled", "nonchim")
+rownames(track) <- sample.names
+
+write.csv(track, "track_summary.csv", row.names = TRUE)
+```
