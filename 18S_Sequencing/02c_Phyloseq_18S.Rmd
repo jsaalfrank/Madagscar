@@ -16,17 +16,12 @@ I will use a Phyloseq-Object to analyse the 18S rDNA sequening data. For this sc
 
 ## Install libraries
 ```{r}
-library(phyloseq) 
-library(vegan) 
-library(tidyverse) 
-library(microbiome) 
-library(dplyr) 
-library(dada2)
-library(magrittr)
-library(dplyr)
 library(readxl)
-library(Biostrings)
-library(ggplot2)
+library(dplyr) 
+library(tidyverse) 
+library(phyloseq) 
+library(magrittr)
+library(stringr) 
 ```
 
 ## Load Seqtab.nochim File
