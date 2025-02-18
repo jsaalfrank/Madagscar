@@ -128,7 +128,97 @@ pruned_noplants_noaquatic = subset_taxa(pruned_noplants, !(Genus%in% aquatic_gen
 
 get_taxa_unique(pruned_noplants_noaquatic, "Genus")
 
-#This is the Phyloseq-Object I am using for Analysis, and which you also will find in the Github-folders:
+```
 
-pruned_noplants_noaquatic
+# Eukaryota in samples - binary valued
+To compare, in a later timepoint the 16S data according to the abundance of certain Eukaryotic taxa, I am adding additional columns to the sample_data. The columns are named by the Eukaryotic taxa on Genus level and the rows contain 1 (at least 100 Eukayotic reads in the sample DNA), or 0 (reads are not abundant). 
+```{r}
+PS <- pruned_noplants_noaquatic 
+
+PS <- prune_taxa(taxa_sums(pruned_noplants_noaquatic ) > 0, pruned_noplants_noaquatic) #removes taxa  that have a total abundance of zero across all sample
+PS <- prune_taxa(taxa_sums(pruned_noplants_noaquatic) >= 100, pruned_noplants_noaquatic) # taxa with at least 100 reads are considered "positive"
+
+sample_sums_vector <- sample_sums(PS) # Finde die Samples, die 0 Reads haben
+samples_zero <- names(sample_sums_vector[sample_sums_vector == 0])
+#removes samples that have a total abundance of zero across all taxa
+PS_filt <- prune_samples(sample_sums(PS) > 0, PS) 
+#total number of sequences (reads) across all taxa and samples
+total_sequences <- sum(otu_table(PS_filt)) 
+# Calculate the proportion of each taxon
+genus_abundance <- taxa_sums(PS_filt) / total_sequences 
+#  Create a logical vector to identify genera that are > 0.1% present 
+keep_genera <- genus_abundance > 0.0001  
+
+# Prune the taxa to keep only those with > 0.1% presence
+PS_filter <- prune_taxa(keep_genera, PS_filt) 
+get_taxa_unique(PS_filter, "Genus")
+
+
+glom_eukaryptes <- tax_glom(PS_filter, taxrank = "Genus")
+
+#extract ASV_table from aggregated Phyloseq-object 
+otu_tab <- as.data.frame(as.matrix(otu_table(glom_eukaryptes)))
+
+# extract taxonomic table
+tax_tab <- tax_table(glom_eukaryptes)
+#get genus names from  taxonomic table
+genus_names <- tax_tab[, "Genus"]
+# rename colnames with genus names (otherwise you'll have a lot of sequences there)
+colnames(otu_tab) <- genus_names
+# filter only genera, that are part of genus_focus
+otu_tab_filtered <- otu_tab[colnames(otu_tab) %in% genus_focus, ]
+# change values in binary values
+otu_tab_filtered_binary <- ifelse(otu_tab_filtered > 0, 1, 0)
+
+# back in a original dataframe
+otu_tab_filtered_binary <- as.data.frame(otu_tab_filtered_binary)
+
+#combine the oou_tab_filtered with sample_data of PS_filtered
+identical(rownames(otu_tab_filtered_binary), rownames(sample_data(pruned_noplants_noaquatic)))
+
+sample_metadata <- as.data.frame(sample_data(pruned_noplants_noaquatic))
+
+#make sure, that all samples from sample_metadata re in the otu_tab_filtered_binary
+missing_samples <- setdiff(rownames(sample_metadata), rownames(otu_tab_filtered_binary))
+
+# Create a 0 matrix, for the missing samples
+if (length(missing_samples) > 0) {
+  missing_data <- as.data.frame(matrix(0, nrow = length(missing_samples), ncol = ncol(otu_tab_filtered_binary)))
+  colnames(missing_data) <- colnames(otu_tab_filtered_binary)
+  rownames(missing_data) <- missing_samples
+
+#add them in the remaining samples
+  otu_tab_filtered_binary <- rbind(otu_tab_filtered_binary, missing_data)
+}
+
+#make sure, the order of the samples is the same in the 2 tables
+otu_tab_filtered_binary <- otu_tab_filtered_binary[rownames(sample_metadata), , drop = FALSE]
+
+#merging sample  metadata with otu_values, which are acually ASV values
+merged_sample_data <- cbind(sample_metadata, otu_tab_filtered_binary)
+head(merged_sample_data)
+
+#use a different phyloseq object, just as a backup
+phyloseq_overall_final <- pruned_noplants_noaquatic
+
+# new sample_data  for the new phyloseq object! 
+sample_data(phyloseq_overall_final) <- sample_data(merged_sample_data)
+head(sample_data(phyloseq_overall_final))
+```
+
+## Create Subgroups for Fungal reads and Helminths/Protist reads
+
+First, I am filtering manually the fungal reads on Class and Family level:
+```{r}
+pruned_even_depth_fungi <- subset_taxa (phyloseq_overall_final, Class %in% c("Ascomycota",  "Basidiomycota", "Mucoromycota" , "Peronosporomycetes", "Rozellomycota", "Blastocladiomycota", "Fungi_X", "Chytridiomycota", "Zoopagomycota",  "Aphelidiomycota", "Hyphochytriomyceta"))
+pruned_even_depth_fungi <- subset_taxa (pruned_even_depth_fungi, Family %in% c("Saccharomycetales" ,"Eurotiomycetes",         "Exobasidiomycetes",  "Cystobasidiomycetes", "Dothideomycetes",  "Tremellomycetes", "Sordariomycetes",  "Mucorales", "Mucoromycotina_X", "Leotiomycetes",  "Agaricomycetes", "Ustilaginomycetes", NA , "Atkinsiellales",  "Microbotryomycetes", "Wallemiales", "Pezizomycetes", "Rozellomycota_XX",  "Agaricostilbomycetes", "Basidiomycota_XX", "Stephanoascales" , "Blastocladiomycetes","Fungi_XXX" , "Rhizophydiales_X", "Monilycetes" , "Lecanoromycetes", "Neocallimastigaceae", "Schizosaccharomycetes", "Lipomycetaceae", "Spizellomycetales_X",  "Entomophthoromycotina_X", "Aphelidiaceae" , "Hyphochrytriaceae", "Hyphochytrydiales_X" , "Pucciniomycetes", "Mortierellaceae_X", "Dimargaritaceae", "Endogonales", "Orbiliomycetes"))        
+```
+
+Second, I am filtering manually the "fungal "parasitic" reads on Class and Family level (Some protists are not parasitic, I knoe - but I used the term in here to make things easier - so please don't blame me)
+```{r}
+pruned_even_depth_parasites <- subset_taxa (phyloseq_overall_final, Class %in% c ("Opalozoa", "Nematoda", "Platyhelminthes", "Tritrichomonadea", "Archamoebea", "Endomyxa", "Kinetoplastea", "Variosea", "Colpodellidea", "Flabellinia", "Myxozoa", "Coccidiomorphea", "Telonemia_XX", "Ichthyophonida", "Acanthocephala",  "Annelida"))
+
+pruned_even_depth_parasites <- subset_taxa(pruned_even_depth_parasites, Family %in% c ("Blastocystis-Group", "Chromadorea_X", "Digenea", "Dientamoebidae", "Rhabdocoela", "Entamoebidae", "Eucestoda", "Kinetoplastea_XX", "Myxosporea", "Eimeriidae", "Sarcocystidae", "Monopisthocotylea", "Ichthyobodonidae", "Acanthocephala_XX"))
+
+get_taxa_unique(pruned_even_depth_parasites, "Family")
 ```
