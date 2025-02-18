@@ -7,9 +7,9 @@ output: html_document
 
 ## Overview
 
-qPCR Analysis of Kiel and Mahajanga samples was performed. 
+qPCR Analysis of total 50 samples from Kiel and Mahajanga samples was performed. 
 R Studio is used to generate the concentration plot. 
-The concentration was calculated by using the standard curve from the run performed on 9.Dec.2024. 
+The concentration was calculated by using the standard curve from the run performed on Dec. 09, 2024. 
 The concentration is measured in pg. 
 
 Following libraries will be used:
@@ -20,20 +20,15 @@ library(ggplot2)
 library(ggpubr)
 ```
 Load the excel-table including the S.cere concentrations for all samples, remove two with a faulty concentration of very hight values (S-0150-K0 and S-0029-K0) 
+
 ```{r}
-
 qPCR_Analysis <- read_excel("Desktop/qPCR Analysis.xlsx", + sheet = "combined")
-
 #remove the outlayers
 qPCR_Analysis_filtered <- qPCR_Analysis[qPCR_Analysis$Sample_name != "S-0150-K0", ]
 qPCR_Analysis_filtered <- qPCR_Analysis_filtered[qPCR_Analysis_filtered$Sample_name != "S-0029-K0", ]
-
 ```
-
 Plotting a boxplot, grouped by location of samples and showing the concentration of S. cere in fecal DNA, measured in pg. 
-
 ```{r}
-
 ggplot(qPCR_Analysis_filtered, aes(x = location, y = `conc in pg`)) +
     geom_boxplot(aes(group = location), width = 0.5, fill = NA, color = "black", size = 1.2, outlier.shape = NA) +
     geom_jitter(aes(color = location), width = 0.3, height = 0, alpha = 0.3, size = 2) +   # Jitter for points colored by location
@@ -80,11 +75,11 @@ ggplot(qPCR_Analysis_filtered, aes(x = location, y = `conc in pg`)) +
         axis.text = element_text(size = 14),
         axis.title = element_text(size = 16, face = "bold")
     )
-
 ```
 
-This could be a add on to show how the distribution looks like. Bins are formed in here. First the concentration- results are binned 
+This could be a add on to show how the distribution looks like. Bins are formed in here. First the concentration-results are binned 
 in different values and in the second step a barplot is generated to compare the bins. 
+
 ```{r}
 qPCR_Analysis_filtered$bins <- cut(                  #add a new column called bins
     qPCR_Analysis_filtered$`conc in pg`,             #add according to the value in `conc in pg` a label 
@@ -92,9 +87,7 @@ qPCR_Analysis_filtered$bins <- cut(                  #add a new column called bi
     labels = c("0-0.01", "0.01-0.02", "0.02-0.03", "0.03-0.04", "0.04-0.05", ">0.05"),
     include.lowest = TRUE
 )
-
 #create a barplot 
-
 ggplot(qPCR_Analysis_filtered, aes(x = bins, fill = location)) +
     geom_bar(position = "dodge", color = "black", size = 0.5) + # barplot with sperated bars per location
     labs(
@@ -116,6 +109,4 @@ ggplot(qPCR_Analysis_filtered, aes(x = bins, fill = location)) +
         legend.title = element_text(size = 12, face = "bold"),
         legend.text = element_text(size = 10)
     )
-
-
 ```
