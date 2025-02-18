@@ -1,0 +1,124 @@
+---
+title: "Phyloseq_18S"
+author: "Johanna"
+date: "2025-02-18"
+output: html_document
+---
+
+```{bash}
+conda activate 18S_
+
+R
+````
+
+##Generate a Phyloseq-Object 
+I will use a Phyloseq-Object to analyse the 18S rDNA sequening data. For this script we will need the seqtab.nochim-table, generated in 02a_DADA2_18S_concatination.Rmd, the taxa-table from the 02b_Annotation_18S_PR2.Rmd script and the metadata, which we will upload within this script. 
+
+## Install libraries
+```{r}
+library(phyloseq) 
+library(vegan) 
+library(tidyverse) 
+library(microbiome) 
+library(dplyr) 
+library(dada2)
+library(magrittr)
+library(dplyr)
+library(readxl)
+library(Biostrings)
+library(ggplot2)
+```
+
+## Load Seqtab.nochim File
+In the seqtab.nochim-file, the rownames still include some endings, we don't need, because in the metadata just the Sequencing-IDs are present, but not with the Fasta-File-name. 
+```{r}
+seqtab.nochim <- readRDS("/home/sukmb626/seqtab.nochim_18S_all.rds") # where you stored your seqtab.nochim
+current_row_names <- rownames(seqtab.nochim)
+new_row_names <- sub("_F_filt.fastq\\.gz$" , "", current_row_names)
+rownames(seqtab.nochim) <- new_row_names
+View(seqtab.nochim)
+micro <- seqtab.nochim
+```
+
+## Load Taxonomic Annotation to PR2 
+```{r}
+taxa <- readRDS("/home/sukmb626/taxa_all.rds" # where you stored your taxonomic annotation to PR2
+taxonomy <- taxa 
+```
+
+
+## Load Metadata 
+```{r}
+samples <- read_excel("Madagascar_Germany_Metadata.xlsx") # where your Metadata is stored 
+```
+
+
+## Prepare different data for generating Phyloseq-Object 
+In order to generate the Phyloseq object, rownames and colnames have to allign. In this step I make sure, that this is true. Because my original metadata-table has more individuals, than people providing stool samples
+```{r}
+
+samples_cleaned <- samples[!is.na(samples$id_ngs18s), ] #remove samples, that don't have a id_ngs_18S
+samples_cleaned <- samples_cleaned[samples_cleaned$id_ngs18s != "", ]
+
+row.names(samples_cleaned) <- samples_cleaned$id_ngs18s
+head(samples_cleaned)
+
+## order tables, that NGSid will fit to each another
+ordered_micro <- micro[order(rownames(micro)),]
+ordered_taxonomy <- taxonomy
+ordered_samples <- samples_cleaned[order(rownames(samples_cleaned)),]
+row.names(ordered_samples) <- ordered_samples$id_ngs18s
+
+## check if the rownames of the different phyoseq-components would be the same
+
+identical(taxonomy %>% rownames(), micro %>% colnames()) #This should be TRUE
+identical(ordered_micro %>% rownames(), ordered_samples$id_ngs18s) #This should be TRUE
+
+##if this is not TRUE, remove unidenntical rownames
+
+rownames_micro <- ordered_micro %>% rownames() #get the ronames first
+rownames_samples <- ordered_samples$id_ngs18s
+
+unique_to_rownames_micro <- setdiff(rownames_micro , rownames_samples) ##compare the different rownames, and see which are "unique"
+unique_to_rownames_samples <- setdiff(rownames_samples, rownames_micro)
+
+#get the length so, you'll see how many samples will be removed
+length(unique_to_rownames_samples)
+length(unique_to_rownames_micro)
+
+##if there are unique rownames, remove them! 
+rows_to_remove <- unique_to_rownames_micro 
+ordered_micro <- ordered_micro[!(rownames(ordered_micro) %in% rows_to_remove), ]
+
+##Check again, if the rownames/colnames are the same
+identical(ordered_micro %>% rownames(), ordered_samples$id_ngs18s) #This should be TRUE
+````
+
+## Phyloseq Object 
+When all tables are mergeable, the Phyloseq-Obejct can be generated. 
+```{r}
+tax.ps <-
+  tax_table(taxonomy %>% as.matrix())
+
+micro.ps <-
+  otu_table(ordered_micro, taxa_are_rows = F)
+
+samples.ps <-
+  sample_data(ordered_samples %>% data.frame())
+
+rownames(samples.ps) <-
+  samples.ps %>% pull(id_ngs18s)
+
+ps <-
+  phyloseq(tax_table(tax.ps),  
+           otu_table(micro.ps, taxa_are_rows = F),
+           sample_data(samples.ps))
+
+#check the dim of the phyloseq-object 
+ps
+
+#save the phyloseq_object
+saveRDS(ps, "~/phloseq_18S_all.rds") # wherever you wanna store your 18S_phyloseq-object
+```
+
+
