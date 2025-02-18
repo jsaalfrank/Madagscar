@@ -1,0 +1,134 @@
+---
+title: "Filter_Phyloseq_18S"
+author: "Johanna"
+date: "2025-02-18"
+output: html_document
+---
+
+## Libraries
+```{r setup, include=FALSE}
+library(tidyverse) 
+library(phyloseq) 
+library(microbiome)
+library(DESeq2)
+library(dada2)
+library(vegan)
+library(readxl)
+```
+
+# Introduction
+
+Here, I demonstrate how this template is used. I knit this script using for R on conda, as some of the data is quite huge. 
+```{bash}
+bash knit_conda 00_18S_Mada_Germany.Rmd
+```
+!!!!MAKE SURE TO PUT THE CODE IN THE CODE FOLDER AND THE RSULTS WILL THEN BE STORED IN THE RESULTS FOLDER. Otherwise everything will be stored in the "Working Directory". 
+
+# Input Phylosed-Object
+Load your 18S-Phyloseq Object, generated in 02c_Phyloseq_18S.Rmd
+```{r}
+ps <- readRDS("~/phloseq_18S_all.rds") #wherever your PhyloseqObject is stored
+```
+
+# Filter our Data
+
+## Filter out NTCs/Mock, remove samples with no information on age and gender
+Delete NTCs/Mocks, they have one thing in common: Not having a location
+```{r}
+# extract metadata
+sample_data_df <- data.frame(sample_data(ps))
+
+# Entferne die Zeilen (Samples) mit NA in der Spalte 'location'
+sample_data_filtered <- sample_data_df[!is.na(sample_data_df$location), ]
+sample_data_filtered <- sample_data_filtered[!is.na(sample_data_filtered$id_ngs18s), ]
+sample_data_filtered <- sample_data_df[!is.na(sample_data_df$sex), ]
+sample_data_filtered <- sample_data_df[!is.na(sample_data_df$age), ]
+
+# Wähle die verbleibenden Samples aus dem phyloseq-Objekt aus
+ps_filtered <- prune_samples(rownames(sample_data_filtered), ps)
+
+# Optional: Überprüfen der neuen Anzahl an Samples
+ps_filtered
+
+# Optional, if you wanna have a look on your MOCK samples and NTC, please check them
+sample_data_NTCS <- subset_samples(ps, pid %in% c("NTC_18S_Germany"))
+sample_data_mock <- subset_samples(ps, pid %in% c("Mock_18S_Germany"))
+```
+
+## Inspect read count
+Calculate the total counts of ASVs across all samples within this phyloseq object
+```{r}
+counts <-
+  ps_filtered %>% 
+  otu_table() %>%
+  data.frame() %>% 
+  rowSums()
+counts
+
+to.plot <- counts %>% data.frame(counts = ., Sample = names(.))
+
+## this is plotting the reads and adding a line, where we want to rarify the data(1000 reads)
+ggplot(to.plot, aes(x = Sample, y = counts)) + geom_col() + geom_hline(yintercept = 1000) + # add horizontal line
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+## Filter of zero counts and Rarefaction
+Remove the samples that are "Zero" and also the reads that are "Zero" and RAREFY the samples to 1000 reads
+```{r}
+summary(sample_sums(ps_filtered))
+# Since we are interested in alpha diversity, it is probably not a bad idea to prune OTUs that are not present in any of the samples  for some reason there are a few in "ps") – BUT DON’T TRIM MORE THAN THAT! I know it is tempting to trim noise right away, but many richness estimates are modeled on singletons and doubletons in the abundance data. You need to leave them in the dataset if you want a meaningful estimate.
+pruned <- prune_taxa(taxa_sums(ps_filtered) > 0, ps_filtered)
+taxa_sums(pruned)
+
+summary(taxa_sums(pruned))
+
+# cut out also the samples that are zero
+summary(sample_sums(pruned))
+pruned <-prune_samples(sample_sums(pruned) > 0, pruned)
+
+summary(sample_sums(pruned))
+
+set.seed(123)
+pruned_even_depth <- rarefy_even_depth(pruned, sample.size = 1000, rngseed = FALSE)
+summary(sample_sums(pruned_even_depth))
+summary(taxa_sums(pruned_even_depth)) 
+get_taxa_unique(pruned_even_depth)
+```
+
+## Keep only Eukaryotic Reads
+Check the Taxonomic levels of PR2: (domain, supergroup, division, subdivision, class, order, family, genus, species)
+```{r}
+#just keep eukaryotes
+pruned_eukaryota = subset_taxa(pruned_even_depth , Domain %in% c("Eukaryota"))
+get_taxa_unique(pruned_eukaryota, Domain)
+
+#get rid of Archaeplastita and Cryptista as they are Algae
+pruned_eukaryota = subset_taxa(pruned_eukaryota,  Supergroup %in% c("Obazoa", "TSAR", "Excavata", "Amoebozoa", "Haptista", "Eukaryota_X", NA))
+```
+
+Now filter out taxa, that probably not "live" in the gut: photosynthetic organisms, aquatic organisms and taxa of goat, shrimps
+```{r}
+get_taxa_unique(pruned_eukaryota , "Division")
+
+pruned_eukaryota = subset_taxa(pruned_eukaryota, !(Genus %in% c("Gallus", "Capra", "Farfantepenaeus", "Leiopotherapon", "Caenorhabditis")))
+
+#remove  the photosynthetic plants (Algae) 
+pruned_noplants = subset_taxa(pruned_eukaryota , !(Division %in% c("Haptophyta")))
+pruned_noplants = subset_taxa(pruned_noplants, !(Class %in% c("Bacillariophyceae", "Chlorarachniophyceae", "Chrysophyceae", "Eustigmatophyceae", "Xanthophyceae", "Mediophyceae", "Dictyochophyceae", "Phaeophyceae", "Synchromophyceae")))
+
+#check if filtering was successfull:
+get_taxa_unique(pruned_noplants, "Class")
+
+#remove aquatic organisms:
+get_taxa_unique(pruned_noplants, "Genus")
+
+aquatic_genus <- c("Parauronema", "Cafeteria", "Halomonhystera", "Tisbe", "Hemiophrys", "Cryothecomonas", "Otocelis", "Urotricha",  "Paracineta", "Diplonema", "Zoothamnopsis",  "Minorisa",  "Hypocoma", "Protaspa", "Minorisa-lineage_X", "Vorticella", "Promesostoma", "Mataza-lineage_X", "Aspidisca", "Paraphysomonas", "Pseudobodo", "Labyrinthulomycetes_LAB1", "Bicoecaceae_X", "Aplanochytrium", "Trochilia", "Ochromonadales_XX", "Bicosoeca", "Vorticella", "Pleurostomatida_X", "Parauronema", "Nitzschia", "Marimonadida_XX", "Diplonema", "Neoparamoeba", "Monosigidae_Group_A_X", "Metanophrys", "Halodinium", "Fibrophrys", "Dysteria", "Zoothamnium", "Zoothamnium_1", "Zoothamnium_2", "Haliclystus", "Gyrodinium", "Acineta", "Pseudovorticella", "Undatella", "Euchlanis", "Salpingoeca", "Plagiostoma", "Pythium", "Thalassiosira", "Skeletonema", "Ectocarpus", "Monosiga", "Lagenidium", "Thalassomyxa", "Ichthyophthirius", "Bellerochea", "Bilabrum", "Oblongichytrium" )
+
+pruned_noplants_noaquatic = subset_taxa(pruned_noplants, !(Genus%in% aquatic_genus ))
+
+get_taxa_unique(pruned_noplants_noaquatic, "Genus")
+
+#This is the Phyloseq-Object I am using for Analysis, and which you also will find in the Github-folders:
+
+pruned_noplants_noaquatic
+```
