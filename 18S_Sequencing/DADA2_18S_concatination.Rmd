@@ -9,14 +9,14 @@ output: html_document
 conda activate 18S_
 ```
 
-#DADA2 Pipeline for 18S rDNA sequencing reads
+# DADA2 Pipeline for 18S rDNA sequencing reads
 In this script, I perform the DADA2 pipeline apply Malte's DADA2 Workflow (https://github.com/mruehlemann/ikmb_amplicon_processing/blob/master/dada2_16S_workflow_with_AR.R) on my 18S V4V5 sequencing reads. 
 All steps are performed in R. 
 ```{bash}
 R
 ```
 
-##Load Libraries
+## Load Libraries
 ```{r}
 library(tidyverse) 
 library(phyloseq) 
