@@ -224,6 +224,9 @@ wilcox_results_overall <- pairwise.wilcox.test(
 )
 
 print(wilcox_results_overall)
+
+write_csv(summary_stats_overall, "summary_stats_overall.csv")
+write.csv(as.data.frame(wilcox_results_overall$p.value), "wilcox_results_overall.csv")
 ````
 
 Alpha diversity for Fungi
@@ -280,6 +283,9 @@ wilcox_results_fungi <- pairwise.wilcox.test(
 )
 
 print(wilcox_results_fungi)
+
+write_csv(summary_stats_fungi, "summary_stats_fungi.csv")
+write.csv(as.data.frame(wilcox_results_fungi$p.value), "wilcox_results_fungi.csv")
 ````
 
 Alpha diversity for "Parasites"
@@ -316,7 +322,7 @@ Alpha.Diversity$location[Alpha.Diversity$location == "MA_Mahajanga_Ankazomborona
  
 Alpha.Diversity$location <- factor(Alpha.Diversity$location,  levels = c( "Andina", "Ankazomborona", "Tsiroanomandidy", "Kiel"))
 
-Alpha.Diversity_overall <- Alpha.Diversity 
+Alpha.Diversity_parasites <- Alpha.Diversity 
 
 #Account the median and CI for each location
 summary_stats_parasites <- Alpha.Diversity_parasites %>%
@@ -334,8 +340,12 @@ wilcox_results_parasites <- pairwise.wilcox.test(
   Alpha.Diversity_parasites$location, 
   p.adjust.method = "bonferroni"
 )
-
 print(wilcox_results_parasites)
+
+#safe the statistical results
+write_csv(summary_stats_parasites, "summary_stats_parasites.csv")
+write.csv(as.data.frame(wilcox_results_parasites$p.value), "wilcox_results_parasites.csv")
+
 ```
 
 # Plot Alpha Diversity 
@@ -453,8 +463,8 @@ ggplot(Alpha.Diversity_combined, aes(x = location, y = Shannon, color = Shannon_
         axis.text = element_text(size = 14),        
         axis.title = element_text(size = 16, face = "bold"),
         axis.text.x = element_text(angle = 45, hjust = 1))
-
 ```
+
 
 
 
