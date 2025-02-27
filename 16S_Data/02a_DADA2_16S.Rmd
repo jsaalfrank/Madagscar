@@ -28,9 +28,6 @@ library(readxl)
  
 #set your paths
 path_reads <- "/work_beegfs/sukmb626/rawdata/16S_Raw_Reads"       #where the raw reads are stored
-path_taxonomy <- "home/sukmb626/Madagscar/16S/tax_assign"         #where the tax_assign table is stored
-path_table <- "/home/sukmb626/Madagscar/16S/tables"               #where the assign_tables are stored
-path_wd <- "/work_beegfs/sukmb626/16S_Madagascar_Deutschland"     #this is the working directory for later (!) 
 ```
 ## Raw Reads 
 First, raw sequencing reads (in FastQ Files) are loaded in the R environment, 
