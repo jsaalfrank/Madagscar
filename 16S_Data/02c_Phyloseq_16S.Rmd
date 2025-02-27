@@ -1,0 +1,37 @@
+---
+title: "Phyloseq_16S"
+author: "Johanna"
+date: "2025-02-27"
+output: html_document
+---
+
+```{bash}
+conda activate 18S_
+R
+````
+
+##Generate a Phyloseq-Object 
+I will use a Phyloseq-Object to analyse the 16S rDNA sequening data. 
+For this script we will need the seqtab.nochim-table, generated in 02a_DADA2_16S.Rmd, 
+the taxa-table from the 02b_Annotation_16S_RDP16.Rmd script and the metadata, which we will upload within this script. 
+
+## Install libraries
+```{r}
+library(readxl)
+library(dplyr) 
+library(tidyverse) 
+library(phyloseq) 
+library(magrittr)
+library(stringr) 
+```
+
+## Load Seqtab.nochim File
+In the seqtab.nochim-file, the rownames still include some endings, we don't need, because in the metadata just the Sequencing-IDs are present, but not with the Fasta-File-name. 
+```{r}
+seqtab.nochim <- readRDS("/home/sukmb626/seqtab.nochim_18S_all.rds") # where you stored your seqtab.nochim
+current_row_names <- rownames(seqtab.nochim)
+new_row_names <- sub("_F_filt.fastq\\.gz$" , "", current_row_names)
+rownames(seqtab.nochim) <- new_row_names
+View(seqtab.nochim)
+micro <- seqtab.nochim
+```
