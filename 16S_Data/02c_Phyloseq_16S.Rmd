@@ -42,7 +42,75 @@ micro <- seqtab.nochim
 
 ## Load Taxonomic Annotation to RDP16  
 ```{r}
-taxa <- readRDS("/home/sukmb626/taxa_all.rds" # where you stored your taxonomic annotation to RDP
+# where you stored your taxonomic annotation to RDP
+taxa <- readRDS("/work_beegfs/sukmb626/16S_Madagascar_Deutschland/tax_assign_ASV_Bayes_16RDP.rds") 
 taxonomy <- taxa 
 ```
+## Load Metadata
+```{r}
+samples <- read_excel("Madagascar_Germany_Metadata.xlsx") # where your Metadata is stored 
+```
+
+## Prepare different data for generating Phyloseq-Object 
+In order to generate the Phyloseq object, rownames and colnames have to allign. In this step I make sure, that this is true. Because my original metadata-table has more individuals, than people providing stool samples
+```{r}
+
+samples_cleaned <- samples %>% filter(!is.na(id_ngs16S))
+samples_cleaned <- samples_cleaned[samples_cleaned$id_ngs16s != "", ]
+
+row.names(samples_cleaned) <- samples_cleaned$id_ngs16S        #define the rownames
+ordered_samples <- samples[order(rownames(samples_cleaned)),]  #order the rownames alphabetical
+
+
+## order the other tables, that NGSid will fit to each another
+ordered_micro <- micro[order(rownames(micro)),]
+
+
+## check if the rownames of the different phyoseq-components would be the same
+
+identical(taxonomy %>% rownames(), ordered_micro %>% colnames())  #this should be TRUE
+identical(ordered_micro %>% rownames(), ordered_samples$id_ngs16S)        #this should be TRUE
+
+## If it is not TRUE, then search for samples that are either not in the seqtab.nochim or not in the samples (This are usually your MOCK communities or your NTCs
+
+unique_to_rownames_micro <- setdiff(rownames_micro , rownames_sample)     #there were samples here (in my case)
+unique_to_rownames_sample <- setdiff(rownames_sample , rownames_micro)
+length(unique_to_rownames_samples)
+length(unique_to_rownames_micro)
+
+rows_to_remove <- unique_to_rownames_micro
+ordered_micro <- ordered_micro[!(rownames(ordered_micro) %in% rows_to_remove), ]
+
+identical(ordered_micro %>% rownames(), ordered_samples$id_ngs16S)       #now, this should be TRUE
+```
+
+## Phyloseq Object 
+When all tables are ready, the phyloseq-object is ready to be generated. 
+
+```{r}
+tax.ps <-
+  tax_table(taxonomy %>% as.matrix())
+
+micro.ps <-
+  otu_table(ordered_micro, taxa_are_rows = F)
+
+samples.ps <-
+  sample_data(ordered_samples %>% data.frame())
+
+rownames(samples.ps) <-
+  samples.ps %>% pull(id_ngs16S)
+
+ps <-
+  phyloseq(tax_table(tax.ps),  
+           otu_table(micro.ps, taxa_are_rows = F),
+           sample_data(samples.ps))
+
+#check the dim of the phyloseq-object 
+ps
+
+#safe the 16S phyloseq_object
+saveRDS(ps, "/work_beegfs/sukmb626/16S_Madagascar_Deutschland/phyloseq_16S_all.rds")
+```
+
+
 
