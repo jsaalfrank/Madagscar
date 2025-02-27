@@ -1,0 +1,151 @@
+---
+title: "Filter_Phyloseq_16S"
+author: "Johanna"
+date: "2025-02-18"
+output: html_document
+---
+
+## Libraries
+```{r setup, include=FALSE}
+library(tidyverse) 
+library(phyloseq) 
+library(microbiome)
+library(DESeq2)
+library(dada2)
+library(vegan)
+library(readxl)
+```
+
+# Input Phylosed-Object
+Load your 16S-Phyloseq Object, generated in 02c_Phyloseq_16S.Rmd
+```{r}
+ps <- readRDS("~/phyloseq_16S_all.rds") #wherever your PhyloseqObject is stored
+```
+
+# Filter our Data
+
+## Filter out NTCs/Mock, remove samples with no information on age and gender
+Delete NTCs/Mocks, they have one thing in common: Not having a location
+```{r}
+# extract metadata
+sample_data_df <- data.frame(sample_data(ps))
+
+# Entferne die Zeilen (Samples) mit NA in der Spalte 'location'
+sample_data_filtered <- sample_data_df[!is.na(sample_data_df$location), ]
+sample_data_filtered <- sample_data_filtered[!is.na(sample_data_filtered$id_ngs16s), ]
+sample_data_filtered <- sample_data_df[!is.na(sample_data_df$sex), ]
+sample_data_filtered <- sample_data_df[!is.na(sample_data_df$age), ]
+
+# Wähle die verbleibenden Samples aus dem phyloseq-Objekt aus
+ps_filtered <- prune_samples(rownames(sample_data_filtered), ps)
+
+# Optional: Überprüfen der neuen Anzahl an Samples
+ps_filtered
+
+# Optional, if you wanna have a look on your MOCK samples and NTC, please check them
+sample_data_NTCS <- subset_samples(ps, pid %in% c("NTC_16S_Germany"))
+sample_data_mock <- subset_samples(ps, pid %in% c("Mock_16S_Germany"))
+```
+
+## Inspect read count
+Calculate the total counts of ASVs across all samples within this phyloseq object
+```{r}
+counts <-
+  ps %>% 
+  otu_table() %>%
+  data.frame() %>% 
+  rowSums()
+counts
+
+to.plot <- counts %>% data.frame(counts = ., Sample = names(.))
+## this is plotting the reads and adding a line, where we want to rarify the data(10000 reads)
+ggplot(to.plot, aes(x = Sample, y = counts)) + geom_col() + geom_hline(yintercept = 10000) + # add horizontal line
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+## Filter of zero counts and Rarefaction
+Since we are interested in alpha diversity, it is ok to prune ASVs that are not present in any of the samples 
+- BUT DON’T TRIM MORE THAN THAT! We need the rest! to have a proper estimation of low-abundance taxa as well!
+```{r}
+pruned <- prune_taxa(taxa_sums(ps_filtered) > 0, ps_filtered)
+
+taxa_sums(pruned)
+summary(taxa_sums(pruned))
+summary(sample_sums(pruned))
+
+pruned <-prune_samples(sample_sums(pruned) > 0, pruned)      #cut out also the samples that are zero
+summary(sample_sums(pruned))
+
+set.seed(123)
+pruned_even_depth <- rarefy_even_depth(pruned, sample.size = 10000, rngseed = 123) #rarefy to 10000 reads
+```
+
+## Keep only Bacterial Reads
+Continue with just keeping bacteria and removing contaminations such as photosynthetic bacteria and other water contaminants 
+```{r}
+#just keep bacteria
+pruned_bacteria = subset_taxa(pruned_even_depth , Kingdom %in% c("Bacteria"))      #just keep bacteria 
+```
+Now filter out taxa, that probably not "live" in the gut: photosynthetic organisms, aquatic organisms and taxa of goat, shrimps
+```{r}
+get_taxa_unique(pruned_bacteria, "Phylum")     #check what kind of bacteria we see here
+#remove  photosyntetische bacteria as Cyanobacteria/Chloroplast 
+pruned_bacteria = subset_taxa(pruned_bacteria, !(Phylum %in% c("Cyanobacteria/Chloroplast")))    
+```
+
+# Add 18S metadata to 16S metadata
+
+Here I compare the 16S data according to the abundance of certain Eukaryotic taxa, 
+I am adding additional columns to the sample_data. The columns are named by the Eukaryotic taxa on Genus level 
+and the rows contain 1 (at least 100 Eukayotic reads in the sample DNA), or 0 (reads are not abundant). 
+I did this in 02d_filter_phyloseq_create_subgroups18S.Rmd. 
+
+So in here, I extract the columns with "binary" values for he abundance of certain Eukaryotic taxa and merge them with the metadata-table of the 16S data. 
+```
+phyloseq_overall_final <- readRDS("~/Desktop/SCHISDIMA/18S_Mada_Germany/phyloseq_overall_final.rds") #load the 18S phyloseq-object
+
+# list the columns of the metadata_table i wanna keep
+columns_to_keep <- c("Blastocystis", "Candida", "Galactomyces", "Pichia", "Schistosoma",
+                     "Saccharomyces", "Debaryomyces", "Dientamoeba", "Entamoeba", "Penicillium",
+                     "Malassezia", "Lodderomyces", "Torulaspora", "Pentatrichomonas", 
+                     "Cladosporium", "Hanseniaspora", "Trichosporon", "Cryptococcus", 
+                     "Kazachstania", "Sordaria", "Necator", "Leidyana1", "Aspergillus", 
+                     "Bothriocephalus", "pid")
+
+# Make sure, that all columns also exist in the sample_data from the 18S_phyloseq
+columns_to_keep <- intersect(colnames(sample_data(phyloseq_overall_final)), columns_to_keep)
+
+#just extract the rows
+subset_phyloseq_18S <- phyloseq_overall_final
+sample_data(subset_phyloseq_18S ) <- sample_data(phyloseq_overall_final)[, columns_to_keep, drop = FALSE]
+head(sample_data(subset_phyloseq_18S))   ##check the rownames
+
+identical(sample_data(subset_phyloseq_18S)$pid,sample_data(pruned_bacteria)$pid)  ##this should be TRUE
+
+#if its not TRUE, then check which samples are unique to 18S or the 16S data and remove them
+
+different_pids <- setdiff(sample_data(subset_phyloseq_18S)$pid,sample_data(pruned_bacteria)$pid)
+different_pids2 <- setdiff(sample_data(pruned_bacteria)$pid, sample_data(subset_phyloseq_18S)$pid)
+
+reduced_subset_phyloseq_18S <- subset_samples(subset_phyloseq_18S, 
+                                              !sample_data(subset_phyloseq_18S)$pid %in% different_pids)
+
+reduced_subset_bacteria_16S <- subset_samples(pruned_bacteria, 
+                                              !sample_data(pruned_bacteria)$pid %in% different_pids2 )
+
+
+##now perform the merging process
+sample_data_18S <- as(sample_data(reduced_subset_phyloseq_18S), "data.frame")
+sample_data_pruned <- as(sample_data(reduced_subset_bacteria_16S), "data.frame")
+
+merged_sample_data <- merge(sample_data_pruned, sample_data_18S, by = "pid", all.x = TRUE)
+rownames(merged_sample_data) <- merged_sample_data$id_ngs16S
+
+# Merge mit phyloseq-Objekt
+pruned_bacteria_eukaryotes <- merge_phyloseq(pruned_bacteria, sample_data(merged_sample_data))
+
+head(sample_data(pruned_bacteria_eukaryotes))
+
+#safe the "combined" phyloseq object
+saveRDS(pruned_bacteria_eukaryotes, "/work_beegfs/sukmb626/16S_Madagascar_Deutschland/pruned_bacteria_eukaryotes.rds")
+```
