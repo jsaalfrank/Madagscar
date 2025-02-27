@@ -1,0 +1,43 @@
+---
+title: "02b_Annotation_16S_RDP16"
+author: "Johanna"
+date: "2025-02-18"
+output: html_document
+---
+
+```{bash}
+conda activate 18S_
+R
+````
+
+# Annotation of DADA2 Output to RDOP16 Database
+Here, I am going to annotate the seqtab.nochim, created in 02a_DADA2_186S.Rmd. 
+Download the rdp_train_set_16.fa.gz database and store it, if possible on a cluster. 
+
+Note: the taxonomic ranks are automatively annotated
+Note: Alternatively try to annotate your DADA2 output to the Greengene2 database from 2024 (https://zenodo.org/records/14169078)
+PR2 has different taxLevels than the DADA2 default. When assigning taxonomy against PR2,  Domain (replacing Kingdom), Supergroup, Division, Subdivision, Class, Order, Family, Genus, and Species, so use the following: assignTaxonomy(..., taxLevels = c("Domain","Supergroup","Division","Subdevision", "Class","Order","Family","Genus","Species"))
+
+## Install Libraries 
+```{r}
+library(dada2)
+```
+
+## Assing taxonomy to RDP16 Database
+Clarify, where you stored your RDP16 Database and read the seqtab.nochim-table to your environment
+```{r}
+path_RDP <- "/work_beegfs/sukmb626/16S_Madagascar_Deutschland/rdp_train_set_16.fa.gz" # Where is your database stored
+seqtab.nochim <- readRDS("/home/sukmb626/seqtab.nochim_16S_all.rds") # where you stored your seqtab.nochim
+
+#assign taxonomy to the seqtab.nochim generated in the session before  
+taxa <- data.frame(assignTaxonomy(merged_seqtab, "/work_beegfs/sukmb626/16S_Madagascar_Deutschland/rdp_train_set_16.fa.gz", multithread=4))                                      
+
+#check the fist lines of the taxa_table so that in the end can work with it! 
+taxa.print <- taxa # Removing sequence rownames for display only
+rownames(taxa.print) <- NULL
+head(taxa.print)
+
+##save the taxa table to continue with the generating of the Phyloseq Object
+saveRDS(taxa,"/work_beegfs/sukmb626/16S_Madagascar_Deutschland/tax_assign_ASV_Bayes_16RDP.rds")
+```
+
