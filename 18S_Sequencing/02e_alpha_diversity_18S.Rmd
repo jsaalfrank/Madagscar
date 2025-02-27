@@ -168,8 +168,8 @@ library(ggpubr)
 library(patchwork)
 ````
 
-##Analyse Alpha Diversity 
-For total 18S dataset, the funal and "parasitic" dataset
+## Analyse Alpha Diversity 
+For total 18S dataset, the fungal and "parasitic" dataset
 
 ```{r}
 XX <- phyloseq_overall_final #first, total dataset
