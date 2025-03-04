@@ -1,0 +1,143 @@
+---
+title: "binary_values_eukaryotes"
+author: "Johanna"
+date: "2025-03-04"
+output: html_document
+---
+
+
+## Libraries
+```{r}
+library(phyloseq) # Because we are going to work with microbioe data using phyloseq object
+library(vegan) # Many ecology related functions
+library(tidyverse) # Use of pipe and lots of functions for a better R coding
+library(microbiome) # some useful functions
+library(DESeq2)# Test with negative binomial models
+library(dplyr) 
+library(dada2)
+library(magrittr)
+library(readxl)
+library(Biostrings)
+library(ggplot2)
+library(ggpubr)
+library(patchwork)
+````
+
+## Binary Values Eukaryotic Reads
+In here, I want to analyse the data I generated. To have an overview about who has certain reads and 
+calculate the abundance of certain eukaryotic taxa according to the location.
+I am using the phyloseq-object "phyloseq_overall_final" I generates in "02d_filter_phyloseq_create_subgroups.Rmd"
+
+```{r}
+sample_metadata <- sample_data(phyloseq_overall_final)
+
+# Define the locations to check
+locations <- c("Kiel", "FA_Andina", "TO_Tsiroanomandidy", "MA_Mahajanga_Ankazomborona")
+```
+
+### Location
+Investigate the metrics for the locations
+```{r}
+# Define the locations to check
+locations <- c("Kiel", "FA_Andina", "TO_Tsiroanomandidy", "MA_Mahajanga_Ankazomborona")
+
+# Count the number of samples for each location
+location_counts <- sapply(locations, function(loc) sum(sample_metadata$location == loc, na.rm = TRUE))
+
+# Print the results
+location_counts
+```
+### Sex
+Investigate the metrics for the sex of the study participants
+```{r}
+sex_counts <- lapply(locations, function(loc) {
+  data_subset <- subset(sample_metadata, location == loc)
+  list(
+    female = sum(data_subset$sex== "female", na.rm = TRUE),
+    male = sum(data_subset$sex == "male", na.rm = TRUE)
+  )
+})
+
+overall_sex_counts <- list(
+  female = sum(sample_metadata$sex == "female", na.rm = TRUE),
+  male = sum(sample_metadata$sex == "male", na.rm = TRUE)
+```
+### Age
+Investigate the metrics for the age of the study participants
+```{r}
+age_summary <- lapply(locations, function(loc) {
+  data_subset <- subset(sample_metadata, location == loc & !is.na(age))
+  
+  if (nrow(data_subset) > 0) {
+    list(
+      Mean_Age = mean(data_subset$age, na.rm = TRUE),
+      Age_Range = paste0(min(data_subset$age, na.rm = TRUE), " - ", max(data_subset$age, na.rm = TRUE))
+    )
+  } else {
+    list(
+      Mean_Age = NA,
+      Age_Range = "No Data"
+    )
+  }
+})
+
+
+overall_age_summary <- list(
+  Mean_Age = mean(sample_metadata$age, na.rm = TRUE),
+  Age_Range = paste0(min(sample_metadata$age, na.rm = TRUE), " - ", max(sample_metadata$age, na.rm = TRUE))
+)
+```
+Now I wanna know regarding some eukaryotic taxa of interest how many individuals had reads.
+I am starting with different fungi, food-associated fungi, continute with helminths and finish with protozoa.
+  
+```{r}
+taxa_of_interest_fungi <- c("Saccharomyces", "Debaryomyces", "Mucor", "Penicillium", "Starmerella", "Galactomyces", "Issatchenkia", "Candida", "Kazachstania", "Hanseniaspora", "Rhizopus", "Microascus", "Aspergillus", "Torulaspora", "Pichia", "Cryptococcus", "Lodderomyces", "Cladosporium", "Trichosporon", "Malassezia", "Sordaria")
+taxa_of_interest_food_fungi <- c("Saccharomyces", "Debaryomyces",  "Mucor", "Penicillium",   "Starmerella",   "Galactomyces",  "Issatchenkia",  "Candida", "Kazachstania",  "Hanseniaspora", "Rhizopus",  "Microascus",   "Aspergillus",   "Torulaspora",   "Pichia")
+taxa_of_interest_helminths <- c("Schistosoma", "Necator", "Enterobius", "Ascaris", "Trichuris", "Ancylostoma", "Strongyloides", "Bothriocephalus")
+taxa_of_interest_protozoa <- c("Blastocystis", "Entamoeba", "Dientamoeba", "Pentatrichomonas", "Leidyana1")
+```
+  
+Calculate the numbers of participants carrying reads:
+```{r}
+genus_interested <- subset_taxa(phyloseq_overall_final, Genus %in% taxa_of_interest_fungi) #here you type in one of the 4 different taxa_of_interest-Lists
+samples_interested <- sample_names(genus_interested)[sample_sums(genus_interested) > 0]
+
+phyloseq_with_interested_samples <- prune_samples(samples_interested, phyloseq_overall_final)
+sample_metadata <- sample_data(phyloseq_with_interested_samples)
+
+locations <- c("Kiel", "FA_Andina", "TO_Tsiroanomandidy", "MA_Mahajanga_Ankazomborona")
+
+# Count the number of samples for each location
+location_counts <- sapply(locations, function(loc) sum(sample_metadata$location == loc, na.rm = TRUE))
+# Print the results
+location_counts
+```
+
+Now check for the different Genera you wanna look at: 
+```{r}
+genus_ofinterest <- subset_taxa(phyloseq_overall_final, Genus %in% "Schistosoma") #Here you add the Genus you wanna have the information about! 
+
+samples_ofinterest <- sample_names(genus_ofinterest)[sample_sums(genus_ofinterest) > 0]
+
+# Create a new phyloseq object containing only these samples
+phyloseq_with_samples_ofinterest <- prune_samples(samples_ofinterest, phyloseq_overall_final)
+
+sample_metadata <- sample_data(phyloseq_with_samples_ofinterest)
+
+# Define the locations to check
+locations <- c("Kiel", "FA_Andina", "TO_Tsiroanomandidy", "MA_Mahajanga_Ankazomborona")
+
+# Count the number of samples for each location
+location_counts <- sapply(locations, function(loc) sum(sample_metadata$location == loc, na.rm = TRUE))
+
+# Print the results
+location_counts
+```
+
+                          
+
+                          
+
+                          
+
+
