@@ -1,0 +1,278 @@
+---
+title: "heatmap_18S"
+author: "Johanna"
+date: "2025-03-18"
+output: html_document
+---
+
+## Libraries
+Load following libraries in your Rstudio: 
+```{r}
+library(phyloseq)
+library(dplyr)
+library(tidyr)
+library(FSA)
+library(ggpubr)
+library(stats)
+library(multcompView)
+library(writexl)
+library(pheatmap)
+library(RColorBrewer)
+library(grDevices)
+library(ggplot2)
+library(vegan)
+library(tibble)
+```
+
+## **1. Clean Data Filter (OPTIONAL) **
+### **1.1 Remove Zero-Abundance Taxa and Samples**
+```{r}
+PS <- phyloseq_overall_final  #here you we use the phyloseq-object we generated in "02d_filter_phyloseq_create_subgroups18S.Rmd"
+total_sequences <- sum(otu_table(PS))
+
+# Remove taxa with zero abundance and keep those that have over 100 reads
+taxa_filtered <- prune_taxa(taxa_sums(PS) > 0, PS)
+taxa_filtered <- prune_taxa(taxa_sums(PS) >= 100, taxa_filtered)
+
+# Remove samples with zero abundance 
+PS_filt <- prune_samples(sample_sums(taxa_filtered) > 0, taxa_filtered)
+```
+
+### **1.2 Filter Based on Relative Abundance**
+Keep the sequences that are abundant in 0.1% of the samples
+```{r}
+genus_abundance <- taxa_sums(PS_filt) / total_sequences
+keep_genera <- genus_abundance > 0.0001
+PS_filter <- prune_taxa(keep_genera, PS_filt)
+```
+---
+
+## **2. Taxonomic Aggregation to Genus level  and Normalization**
+
+### **2.1 Aggregate at Genus Level**
+```{r}
+glom <- tax_glom(PS_filter, taxrank = "Genus")
+ps.melt <- psmelt(glom)
+```
+
+### **2.2 Normalize Abundances and Compute Mean Scaled Abundance**
+I want to have a dataframe, that calculated for each Genus a scaled abundance. So that i can peacefully compare the different locations within one genus. 
+```{r}
+genus_mean_abundance <- ps.melt %>%
+  group_by(Genus) %>%
+  summarise(Mean_Abundance = mean(Abundance, na.rm = TRUE))
+
+df_normalized <- ps.melt %>%
+  left_join(genus_mean_abundance, by = "Genus") %>%
+  mutate(Scaled_Abundance = Abundance / Mean_Abundance)
+
+
+mean_scaled_location <- df_normalized %>%
+  group_by(location, Genus) %>%  # Gruppieren nach Standort und Genus
+  summarise(Mean_Scaled_Abundance = mean(Scaled_Abundance, na.rm = TRUE), .groups = "drop") %>%
+  mutate(Mean_Scaled_Abundance = round(Mean_Scaled_Abundance, 3))  
+
+mean_scaled_location <- mean_scaled_location %>%
+  mutate(Log_Mean_Scaled_Abundance = log10(Mean_Scaled_Abundance))
+
+mean_scaled_location <- mean_scaled_location %>%
+  group_by(Genus, location) %>%
+  summarise(Log_Mean_Scaled_Abundance = mean(Log_Mean_Scaled_Abundance, na.rm = TRUE), .groups = "drop")
+
+```
+---
+## 3. Generating Matrix for Heatmap
+
+```{r}
+log_scaled_abundance_matrix <- mean_scaled_location %>%
+  pivot_wider(names_from = location, values_from = Log_Mean_Scaled_Abundance) %>%
+  column_to_rownames(var = "Genus") %>%
+  as.matrix()
+
+# replace -Inf with the smallest finite value in the matrix to avoid distortion 
+
+log_scaled_abundance_matrix[is.infinite(log_scaled_abundance_matrix)]  <- min(log_scaled_abundance_matrix[is.finite(log_scaled_abundance_matrix)])
+```
+Here, I am defining the colors and that 0 is white! (OPTIONAL)
+```{r}
+# define the value range of the heatmap
+min_val <- min(log_scaled_abundance_matrix, na.rm = TRUE)
+max_val <- max(log_scaled_abundance_matrix, na.rm = TRUE)
+center_val <- 0 
+
+#create color area
+breaks <- c(seq(min_val, center_val, length.out = 50), 
+            seq(center_val, max_val, length.out = 51)[-1])  
+
+heatmap_colors <- colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))(100)
+```
+
+## **4. Statistical Analysis**
+I am comparing here first Kruskal-Wallis Test for each genus and search for significant differences. Afterwards I am comparing the different
+  locations using the Dunn-Posthoc test to test the locations with one-another. Plus I also calculate the obverall Revaltive abundance of the Genera. So we know what we see often in the samples. 
+### **4.1 Kruskal-Wallis Test**
+```{r}
+kruskal_results <- df_normalized %>%
+  group_by(Genus) %>%
+  summarise(
+  p_value = kruskal.test(Scaled_Abundance ~ location)$p.value
+  ) %>%
+  mutate(p_adjusted = p.adjust(p_value, method = "BH"))  # Multiple Testkorrektur mit Benjamini-Hochberg
+
+# **Genera mit signifikanten Unterschieden auswählen (p < 0.05)**
+significant_genera <- kruskal_results %>%
+  filter(p_adjusted < 0.05) %>%
+  pull(Genus)
+
+```
+### **4.2 Dunn’s Post Hoc Test**
+And safe the significant values (and also the not-significant ones) 
+```{r}
+dunn_results <- df_normalized %>%
+  filter(Genus %in% significant_genera) %>%
+  group_by(Genus) %>%
+  do({
+    test <- dunnTest(Scaled_Abundance ~ location, data = ., method = "bh")
+    data.frame(Genus = unique(.$Genus), test$res)
+  }) %>%
+  ungroup()
+
+write_xlsx(dunn_results, "~/Desktop/SCHISDIMA/18S_Mada_Germany/dunnresults.xlsx")
+
+dunn_significant <- dunn_results %>%
+  filter(P.adj < 0.05)
+
+write_xlsx(dunn_significant, "~/Desktop/SCHISDIMA/18S_Mada_Germany/dunnresults_18S_sig.xlsx")
+```
+
+### 4.3. Calculate Overall Relative Abundance regarding the genera
+```{r}
+
+ps.rel <- transform_sample_counts(PS_filter, function(x) x / sum(x))  # Konvertiere zu relativen Abundanzen
+
+glom <- tax_glom(ps.rel, taxrank = "Genus")  # Gruppiere auf Genus-Ebene
+ps.melt <- psmelt(glom)  # Konvertiere phyloseq-Objekt zu DataFrame
+
+# Entferne NA-Werte in der Genus-Spalte
+ps.melt <- ps.melt %>%
+  filter(!is.na(Genus))
+
+ps.melt_sum_location <- ps.melt %>%
+  group_by(location, Genus) %>%
+  summarise(mean_abundance = mean(Abundance), .groups = "drop")  # Berechne den Mittelwert pro Genus & Location
+
+
+abundance_wide <- ps.melt_sum_location %>%
+  pivot_wider(names_from = location, values_from = mean_abundance, values_fill = 0) %>%  # Fehlende Werte mit 0 füllen
+  column_to_rownames("Genus")
+
+abundance_matrix <- as.matrix(abundance_wide)  # Konvertiere in eine Matrix
+overall_relative_abundance <- rowMeans(abundance_matrix, na.rm = TRUE)  # Mittelwert pro Genus über alle Locations hinweg
+log10_abundance <- log10(overall_relative_abundance + 1)  # Log-Transformation (1 hinzugefügt, um log(0) zu vermeiden)
+```
+
+## 5. Create the Heatmap
+### 5.1. Colors/Annotations
+Perform annotation to rows/columns 
+```{r}
+annotation_row <- data.frame( 
+  Significant_Differenced_in_abundance = kruskal_results$p_adjusted ,
+  Overall_RelativeAbundance = log10_abundance,
+  # Füge berechnete Log10-Abundanz hinzu
+  Classification = c(
+    "Fungi", "Protist", "Helminth", "Fungi", "Fungi", "Fungi", "Fungi", "Protist", 
+    "Protist", "Fungi", "Fungi", "Fungi", "Protist", "Fungi", "Fungi", "Helminth", 
+    "Fungi", "Protist", "Fungi", "Fungi", "Helminth", "Fungi", "Fungi", "Fungi"),
+  row.names = rownames(abundance_matrix) # Setze Genus-Namen als Zeilennamen
+)
+                                  
+annotation_col <- data.frame(
+   Urbanization = c("rural", "urban", "semi-urban", "urban"),
+   row.names = colnames(log_scaled_abundance_matrix)  
+ )
+
+adjusted_colors <- function(color, alpha = 0.6) {
+  adjustcolor(color, alpha.f = alpha)
+}
+
+# Neue Farben für Classification mit "Alpha"-Effekt
+ann_colors <- list(
+  Urbanization = c("rural" = "thistle1",   
+                   "semi-urban" = "thistle3", 
+                   "urban" = "thistle4"),  
+  Classification = c("Fungi" = adjusted_colors("#ff4500cc", 0.6),   
+                     "Helminth" = adjusted_colors("#7570b3e5", 0.6), 
+                     "Protist" = adjusted_colors("#66BD63", 0.6)),  # 40% Transparenz
+  Overall_RelativeAbundance = colorRampPalette(c("#F7F7F7", "#DABC13"))(100),
+  sign_differences_KrutisWallis = c("***" = "#A0A0A0",   # Dark Grey (Strong Significan
+                         "**"  = "#C0C0C0",   # Medium-Dark Grey
+                         "*"   = "#E5E5E5",   # Light Grey
+                         "ns"  = "white")   # Very Light Grey (Almost White)
+)                             
+```
+
+### 5.3. Draw the Heatmap
+```{r}
+pheatmap(
+  log_scaled_abundance_matrix ,  
+  scale = "none",  
+  clustering_distance_cols = "manhattan",  
+  clustering_method = "ward.D",
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  border_color = "white",
+  main = "Heatmap of Log-Scaled Abundances per Genus & Location",
+  fontsize_row = 12,
+  fontsize_col = 12,
+  cellwidth = 50,
+  cellheight = 15,
+  color = heatmap_colors,
+  annotation_col = annotation_col,  
+  annotation_row = annotation_row,  
+  annotation_colors = ann_colors, 
+  breaks = breaks, 
+  fontsize = 12 
+)
+```
+
+### 5.4. Horizontal Heatmap (OPTIONAL) 
+#transpose all the matrices
+log_scaled_abundance_matrix_t <- t(log_scaled_abundance_matrix)  # Transponiert die Matrix
+annotation_row_t <- annotation_col  # Locations werden jetzt Reihen-Annotationen
+annotation_col_t <- annotation_row  # Genera werden jetzt Spalten-Annotationen
+ann_colors_t <- list(
+  Urbanization = ann_colors$Urbanization,  
+  Classification = ann_colors$Classification,
+  Overall_RelativeAbundance = ann_colors$Overall_RelativeAbundance,
+  sign_differences_KrutisWallis = ann_colors$sign_differences_KrutisWallis
+)
+
+# horizontal Heatmap (transposed)
+pheatmap(
+  log_scaled_abundance_matrix_t,  
+  scale = "none",  
+  clustering_distance_rows = "manhattan",  # Jetzt Zeilen clustern (ehemals Spalten)
+  clustering_method = "ward.D",
+  show_rownames = TRUE,  # Zeilen anzeigen (jetzt Locations)
+  show_colnames = TRUE,  # Spalten anzeigen (jetzt Genera)
+  border_color = "white",
+  main = "Relative abundance of genera per location",
+  fontsize_row = 12,
+  fontsize_col = 12,
+  cellwidth = 20,
+  cellheight = 20,
+  color = heatmap_colors,
+  annotation_col = annotation_col_t,# Jetzt Spalten-Annotation für Genera
+  annotation_row = annotation_row_t,  # Jetzt Zeilen-Annotation für Locations
+  annotation_colors = ann_colors_t,  # Gleiche Farbzuordnung beibehalten
+  breaks = breaks,  
+  angle_col = "45", 
+  fontsize = 12 
+)
+```
+                                  
+
+
+
+
+
