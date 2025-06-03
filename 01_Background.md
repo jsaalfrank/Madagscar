@@ -18,13 +18,16 @@ To characterize intestinal eukaryotic communities across an urbanization and ind
 
 ## Literature related to this project
 
-* Gruninger et al. 2923()
-  * Description of the SCHISDIMA study 
-* [Swede and Fruitlov 2019]()
-  * Formulation of the fruit salad hypothesis
+* [Gruninger et al. (2023)](https://idpjournal.biomedcentral.com/articles/10.1186/s40249-023-01094-z)
+  * First decribtion of the SCHISDIMA study
+ 
+* [WHO Factsheet: Urban Health (2025)](https://www.who.int/news-room/fact-sheets/detail/urban-health#:~:text=Diabetes%20is%20linked%20to%20obesity,varying%20from%20street%20to%20street.)
+  * Introduction to the challenges and benefits regarding urbanization in human health 
+ 
 
 ## Relevant email and other communication
 
 ```
-email contents
+j.saalfrank@ikmb.uni-kiel.de
+
 ```
