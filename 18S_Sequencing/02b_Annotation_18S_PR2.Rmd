@@ -23,17 +23,21 @@ library(dada2)
 ## Assing taxonomy to PR2
 Clarify, where you stored your PR2 Database and read the seqtab.nochim-table to your environment
 ```{r}
-path_PR2 <- "/work_beegfs/ikmb_repository/databases/PR2/pr2_version_5.0.0_SSU_dada2.fasta" # Where is your PR2 database stored
-seqtab.nochim <- readRDS("/home/sukmb626/seqtab.nochim_18S_all.rds") # where you stored your seqtab.nochim
+path_PR2 <- "~/PR2/pr2_version_5.0.0_SSU_dada2.fasta"                # Where is your PR2 database stored
+seqtab.nochim <- readRDS("~/seqtab.nochim_18S_all.rds")              # Where your 18S seqtab.nochim-table is stored, generatated beforehand
 
-#assign taxonomy to the seqtab.nochim generated in the session before and think about the different texLevels 
-taxa <- assignTaxonomy(seqtab.nochim, path_PR2, multithread=TRUE, taxLevels = c("Domain","Supergroup","Division","Subdevision", "Class","Order","Family","Genus","Species"))
+taxa <- assignTaxonomy(seqtab.nochim, path_PR2, multithread=TRUE, taxLevels = c("Domain","Supergroup","Division","Subdevision", "Class","Order","Family","Genus","Species") )# Assign taxonomy to the seqtab.nochim & think about the different texLevels 
+```
 
-#check the fist lines of the taxa_table so that in the end can work with it! 
-taxa.print <- taxa # Removing sequence rownames for display only
+
+Check the fist lines of the taxa_table so that everything worked and we can work with it:
+
+```{r}
+taxa.print <- taxa                   # Remove sequence rownames for display only
 rownames(taxa.print) <- NULL
-head(taxa.print)
-
-##save the taxa table to continue with the generating of the Phyloseq Object
-saveRDS(taxa, "/home/sukmb626/taxa_all.rds")
+head(taxa.print)                     # Show the rownames for display 
+```
+Save the taxa table to continue with the generating of the Phyloseq Object:
+```{r}
+saveRDS(taxa, "~/taxa_all.rds")
 ```
