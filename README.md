@@ -10,8 +10,6 @@ Here, I will guide you through, data quality controll, filtering and the differe
 ## Main directory
 
 Latest when external collaborators join the project or it is to be published, the landing page of the repo should look welcoming and helpful. A person not knowing the project should be able to understand and reproduce the scientific work presented. The two main design elements for this are obvious filenames and directory structure, and an introductory Readme.md.  
-<img width="588" alt="image" src="https://github.com/user-attachments/assets/1f43e70d-226f-4f43-8f5c-e722becbaa73" />
-
 
 ### Readme.md 
 
