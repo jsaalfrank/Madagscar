@@ -6,12 +6,7 @@ Human stool samples were collected within the SCHISDIMA study, performed by Labg
 
 Here, I will guide you through, data quality controll, filtering and the different analysis. If you have any questions do not hestitate to contact me: j.saalfrank@ikmb.uni-kiel.de  
 
-
-## Main directory
-
-Latest when external collaborators join the project or it is to be published, the landing page of the repo should look welcoming and helpful. A person not knowing the project should be able to understand and reproduce the scientific work presented. The two main design elements for this are obvious filenames and directory structure, and an introductory Readme.md.  
-
-### Readme.md 
+## Readme.md 
 
 All bioinformatical steps, that have been conducted will be noted down in here: 
 
@@ -20,6 +15,8 @@ All bioinformatical steps, that have been conducted will be noted down in here:
 * in _02_Scrips.md_ all bioinformatic scipts will be descriped 
 * this _analysis flowchart_ can serve as a  the step-by-step guite to reproduce our findings:
  <img src="https://github.com/user-attachments/assets/2ad1ba22-d5cb-44d3-b45b-229e9459ec56" width="500"/>
+
+* in _04_Figures.md_ all produced fill be collected 
 
 
 
