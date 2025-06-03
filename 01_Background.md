@@ -2,21 +2,24 @@
 
 ## Organism
 
-Fruits of various species
+Human Stool samples
 
 ## Objective
 
-Check concordance with fruit salad specifications by Fruitlov and Bananas 2021, and investigate hash results.
+To characterize intestinal eukaryotic communities across an urbanization and industrialization gradient, using samples from Madagascar (rural, peri-urban, and urban) and Germany (urban), and to investigate their co-occurances with bacterial gut microbes. 
 
-## Deliverables and Goals
+## Goals
 
-* Sum of all fruits in the data.
-* md5 digest result of the modified fruit table.
+* Comprehensice profiling of intesinal eukaryotes regarding diversity and composition and comparative analysis regarding the different locations using 18S V4V5 rDNA amplicon sequencing.
+* Comparative andaysis of bacterial microbes using 16S V3V4 rDNA amplicon sequencing.
+* Identification of patterns associated with urbanization and industralization in both eukaryotic and bacterial communities.
+* Analysis of co-occurances between eukaryotic and bacterial taxa.
+* _Contextualization of findings regarding global microbiome studies and public health relevance._
 
-## Literature related to project
+## Literature related to this project
 
-* [Fruitlov and Bananas 2021]()
-  * Description of the most recent fruit salad standard
+* Gruninger et al. 2923()
+  * Description of the SCHISDIMA study 
 * [Swede and Fruitlov 2019]()
   * Formulation of the fruit salad hypothesis
 
