@@ -6,7 +6,7 @@ Human stool samples were collected within the SCHISDIMA study, performed by Labg
 
 Here, I will guide you through, data quality controll, filtering and the different analysis. If you have any questions do not hestitate to contact me: j.saalfrank@ikmb.uni-kiel.de  
 
-## Description of Files, Markdowns and Structure
+## Description of files, markdowns and structure
 
 All bioinformatical steps, that have been conducted will be noted down in here: 
 
