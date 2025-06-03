@@ -27,7 +27,8 @@ To characterize intestinal eukaryotic communities across an urbanization and ind
 
 ## Relevant email and other communication
 
+Feel free to contact me, if any questions arise: 
+
 ```
 j.saalfrank@ikmb.uni-kiel.de
-
 ```
