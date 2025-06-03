@@ -17,11 +17,12 @@ Latest when external collaborators join the project or it is to be published, th
 
 All bioinformatical steps, that have been conducted will be noted down in here: 
 
-* 00\_Files.md, 01_Background.md
-* Notebooks
-* Analysis directories
-* ANALYSIS FLOWCHART (todo)
-* For publication, an as-short-as-possible but complete step by step guide to reproduce the results.
+* in _01_Background.md_ contextual background as well our objectives are described 
+* in _00_Files.md_ input files are described 
+* in _02_Scrips.md_ all bioinformatic scipts will be descriped 
+* this _analysis flowchart_ can serve as a  the step-by-step guite to reproduce our findings: 
+
+
 
 ### 00_Files.md
 
@@ -39,19 +40,6 @@ All information about files that can not easily be formatted into a table.
 * Method details so specific that they need not be published
 
 A table of individual mice and their weight used as covariate for a sequencing experiment should be saved as a file and referenced in 00_Files.md.
-
-### 01_Background.md
-
-This document elaborates on the cornerstones of the project. While the main Readme.md is for guidance of the visitor, this is to explain the
-
-* objective,
-* deliverables (when we have all these, the paper can be submitted),
-* literature relevant to the study, with a short description,
-* and relevant communication, e.g. from people who do not contribute to the repo.
-
-### 02-06_Abc.md
-
-Here, the manuscript can be drafted. In 03\_Results.md, figures are implemented. 02_Methods and 03\_Results can contain a supplementary section.
 
 ### environment.yml
 
