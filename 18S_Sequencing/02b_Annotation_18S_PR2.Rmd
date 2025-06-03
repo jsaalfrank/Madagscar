@@ -8,7 +8,7 @@ output: html_document
 ```{bash}
 conda activate 18S_
 R
-````
+```
 
 # Annotation of DADA2 Output to PR2 Database
 Here, I am going to annotate the seqtab.nochim, created in 02_DADA2_18S_concatination.Rmd. Download the PR2 database (version 5.0.0. downloaded 22.05.2024) and store it, if possible on a cluster. 
@@ -36,4 +36,4 @@ head(taxa.print)
 
 ##save the taxa table to continue with the generating of the Phyloseq Object
 saveRDS(taxa, "/home/sukmb626/taxa_all.rds")
-````
+```
