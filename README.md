@@ -19,7 +19,7 @@ All bioinformatical steps, that have been conducted will be noted down in here:
 * in _00_Files.md_ input files are described 
 * in _02_Scrips.md_ all bioinformatic scipts will be descriped 
 * this _analysis flowchart_ can serve as a  the step-by-step guite to reproduce our findings:
-  ![Analysis_Flowchart](https://github.com/user-attachments/assets/2ad1ba22-d5cb-44d3-b45b-229e9459ec56)
+ <img src="https://github.com/user-attachments/assets/2ad1ba22-d5cb-44d3-b45b-229e9459ec56" width="500"/>
 
 
 
