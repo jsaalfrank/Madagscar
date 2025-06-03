@@ -1,17 +1,20 @@
-# Analysis of the eukaryotic and bacterial human fecal microbiota from Madagascar
+# Analysis of the eukaryotic and bacterial microbiota 
 
-Within this project samples were collected within the SCHISDIMA study, performed by Labgroup Fusco at Bernhard-Nocht-Institute for Tropical Medicine in Hamburg. 
-The extracted DNA of the Malagasy samples were supplemented by samples from a Kiel-based cohort. 18S rDNA VXVX amplicon sequencing as well as 16S V3V4 amplicon sequencing was performed on all samples. 
+Intestinal eukaryotes, although important to human health and highly prevalent in many regions, are severely underrepresented in microbial studies, urgently requiring broader research into their distribution along the urbanization gradient considering immense ongoing global urbanization and its impact on the microbiome, disease and environmental factors. With our present work, we adress this research gap. 
+
+Human stool samples were collected within the SCHISDIMA study, performed by Labgroup Fusco at BNITM in Hamburg, Germany, in cooperation with eight different institutions. The extracted DNA of the Malagasy samples were supplemented by samples from a Kiel-based cohort. 18S V4V5 rDNA amplicon sequencing as well as 16S V3V4 rDNA amplicon sequencing was performed on all samples. All laboratory steps were described detailed in the publication. 
+
+Here, I will guide you through, data quality controll, filtering and the different analysis. If you have any questions do not hestitate to contact me: j.saalfrank@ikmb.uni-kiel.de  
 
 
 ## Main directory
 
 Latest when external collaborators join the project or it is to be published, the landing page of the repo should look welcoming and helpful. A person not knowing the project should be able to understand and reproduce the scientific work presented. The two main design elements for this are obvious filenames and directory structure, and an introductory Readme.md.  
+<img width="588" alt="image" src="https://github.com/user-attachments/assets/1f43e70d-226f-4f43-8f5c-e722becbaa73" />
 
-### Readme.md
 
-Within this project samples were collected within the SCHISDIMA study, performed by Labgroup Fusco at Bernhard-Nocht-Institute for Tropical Medicine in Hamburg. 
-The extracted DNA of the Malagasy samples were supplemented by samples from a Kiel-based cohort. 18S rDNA VXVX amplicon sequencing as well as 16S V3V4 amplicon sequencing was performed on all samples. 
+### Readme.md 
+
 All bioinformatical steps, that have been conducted will be noted down in here: 
 
 * 00\_Files.md, 01_Background.md
@@ -21,7 +24,6 @@ All bioinformatical steps, that have been conducted will be noted down in here:
 * For publication, an as-short-as-possible but complete step by step guide to reproduce the results.
 
 ### 00_Files.md
-
 
 This describes all files of importance for this project, namely:
 
